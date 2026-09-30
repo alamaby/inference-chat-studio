@@ -31,6 +31,7 @@ export function ChatView() {
   const [stuckToBottom, setStuckToBottom] = useState(true);
   const historyRef = useRef<string[]>([]);
   const historyIdx = useRef<number>(-1);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   // Guards against double-processing one backend event when two listeners
   // are briefly alive (React StrictMode remounts effects; the async
   // `listen()` promise can resolve after cleanup ran).
@@ -121,6 +122,16 @@ export function ChatView() {
       unlistenError?.();
     };
   }, [setError, setMessages, setStreaming]);
+
+  // Composer autogrow (capped): keeps short prompts compact while long
+  // pastes stay usable without manual resizing.
+  useEffect(() => {
+    const el = composerRef.current;
+    if (el) {
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+    }
+  }, [draft]);
 
   // Smart auto-scroll: follow new messages only while the user is already
   // near the bottom. Reading history never yanks the viewport.
@@ -300,12 +311,13 @@ export function ChatView() {
       )}
       <div className="mt-3 flex gap-2">
         <textarea
+          ref={composerRef}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
-          rows={3}
-          placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
-          className="w-full flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:focus:ring-brand-700"
+          rows={2}
+          placeholder="Type a message… (Enter to send, Shift+Enter for newline, Ctrl+K for quick switch)"
+          className="max-h-[240px] w-full flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:focus:ring-brand-700"
         />
         {streaming
           ? <button onClick={() => void stop()} className="rounded-lg bg-red-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-700">Stop</button>

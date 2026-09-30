@@ -66,7 +66,7 @@ export function MessageList() {
       {messages.map((m, i) => (
         <article
           key={i}
-          className={`rounded-xl border px-3.5 py-2.5 text-sm leading-relaxed ${
+          className={`message-in rounded-xl border px-3.5 py-2.5 text-sm leading-relaxed ${
             m.role === "user"
               ? "ml-12 border-brand-100 bg-brand-50 dark:border-brand-700/40 dark:bg-brand-700/15"
               : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"

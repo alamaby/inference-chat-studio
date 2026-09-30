@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect } from "react";
 import { useProviderStore } from "./stores/providerStore";
+import { CommandPalette } from "./components/CommandPalette";
 import { ProviderForm } from "./components/ProviderForm";
 import { ModelSelector } from "./components/ModelSelector";
 import { SettingsSimple } from "./components/SettingsSimple";
@@ -65,6 +66,7 @@ export function App() {
           <ChatView />
         </main>
       </div>
+      <CommandPalette />
     </div>
   );
 }

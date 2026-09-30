@@ -36,6 +36,11 @@
     0%, 100% { opacity : 1; }
     50% { opacity : 0; }
   }
+
+  @keyframes message-in {
+    from { opacity : 0; transform : translateY(6px); }
+    to { opacity : 1; transform : none; }
+  }
 }
 
 .streaming-caret {
@@ -43,4 +48,15 @@
   width : 8px;
   margin-left : 2px;
   animation : caret-blink 1s step-end infinite;
+}
+
+.message-in {
+  animation : message-in 180ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .streaming-caret,
+  .message-in {
+    animation : none;
+  }
 }
