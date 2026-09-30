@@ -29,6 +29,7 @@ fn main() {
             ipc::delete_conversation,
             ipc::stream_chat_cmd,
             ipc::cancel_stream,
+            ipc::open_devtools,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Inference Chat Studio");

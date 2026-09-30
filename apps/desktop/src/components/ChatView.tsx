@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
+import { formatIpcError } from "../lib/errors";
 import type { ChatDoneEvent, ChatErrorEvent } from "../../../../packages/api-types/src/index";
 import { useProviderStore } from "../stores/providerStore";
 import { availableReasoningOptions } from "../lib/reasoning";
@@ -134,7 +135,7 @@ export function ChatView() {
       setActiveStream(streamId);
     } catch (e) {
       setMessages(messages);
-      setError(e instanceof Error ? e.message : String(e));
+      setError(formatIpcError(e));
       setStreaming(false);
     }
   }

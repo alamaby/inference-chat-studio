@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
+import { formatIpcError } from "../lib/errors";
 import { useProviderStore } from "../stores/providerStore";
 import { statusLabel } from "../lib/reasoning";
 
@@ -41,7 +42,7 @@ export function ProviderForm() {
       setApiKey("");
       await loadProviders();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(formatIpcError(e));
     } finally {
       setBusy(false);
     }

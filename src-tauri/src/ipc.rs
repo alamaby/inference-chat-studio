@@ -861,6 +861,16 @@ pub async fn cancel_stream(
     Ok(())
 }
 
+/// Open the WebView DevTools for the calling window.
+///
+/// MVP debugging aid: the desktop window has no default DevTools shortcut,
+/// so this command is wired to an in-app button and the F12 key.
+#[tauri::command]
+pub async fn open_devtools(window: tauri::WebviewWindow) -> Result<(), IpcError> {
+    window.open_devtools();
+    Ok(())
+}
+
 // Re-export for the app handle wiring in main.rs.
 #[allow(unused_imports)]
 pub use tauri as _tauri_reexport;

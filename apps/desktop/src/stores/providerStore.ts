@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { create } from "zustand";
+import { formatIpcError } from "../lib/errors";
 import type {
   ConnectionStatus,
   ModelInfo,
@@ -111,7 +112,7 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
       set((s) => ({
         testErrorByProvider : {
           ...s.testErrorByProvider,
-          [id] : e instanceof Error ? e.message : String(e)
+          [id] : formatIpcError(e)
         }
       }));
     } finally {

@@ -389,6 +389,7 @@ Out of scope (dilarang di MVP-0):
 - 2026-09-28 — Langkah 6-8 selesai: IPC Tauri (provider/model/chat/history + cancel), frontend (ProviderForm, ModelSelector, SettingsSimple capability-gated, ChatView linear, ConversationList, Inspector masked + TTFT). TTFT diukur di adapter (first content delta). `map_conversation_row` kini dipakai via list_conversations.
 - 2026-09-28 — Langkah 9-10 selesai: installer NSIS `target/release/bundle/nsis/Inference Chat Studio_0.1.0_x64-setup.exe` (4.96 MiB, embedBootstrapper, SHA256 03F7B6B9…). CI Windows (rust + web jobs), TEST-CHECKLIST.md 12 baris. Gate: `cargo test --workspace` 30 pass, `typecheck` 0 error, `vitest` 6 pass, `cargo clippy --workspace --all-targets` 0 warning. Verifikasi install manual di Win10 1809+ dan pengisian kolom Actual checklist tetap tugas manual user (tidak ada VM di lingkungan ini).
 - 2026-09-30 — Bugfix Test connection tanpa feedback: `testConnection` tanpa try/catch menelan rejection diam-diam. Ditambah `testingByProvider`/`testErrorByProvider` di store + tombol Testing…/pesan error di ProviderForm + `eprintln! [ipc]` log di `test_connection_cmd`/`refresh_models`. (Belum di-commit.)
+- 2026-09-30 — Bugfix `[object Object]`: rejection Tauri berupa objek `{code,message}`, formatter baru `lib/errors.ts::formatIpcError` dipakai di 3 titik (store testConnection, ChatView, ProviderForm) + 3 vitest. DevTools diaktifkan: `devtools:true` di tauri.conf.json, command `open_devtools`, tombol DevTools + shortcut F12 di header. (Belum di-commit.)
 
 ## Notes
 
