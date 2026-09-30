@@ -91,6 +91,16 @@ export function ChatView() {
     !!caps && !supported && reasoningLevel !== "Automatic" && reasoningLevel !== "None";
   const canSend =
     !!activeProviderId && !!activeModelId && draft.trim().length > 0 && !streaming && !reasoningBlocked;
+  const sendBlockers: string[] = [];
+  if (!activeProviderId || !activeModelId) {
+    sendBlockers.push("Select a provider and model first.");
+  }
+  if (streaming) {
+    sendBlockers.push("Waiting for the current response — Stop it to send again.");
+  }
+  if (reasoningBlocked) {
+    sendBlockers.push("Reasoning effort is not supported by this model.");
+  }
 
   async function send() {
     setError(null);
@@ -170,6 +180,13 @@ export function ChatView() {
         <p style={{ color : "crimson" }}>
           {error} <button onClick={() => void send()}>Retry</button>
         </p>
+      )}
+      {!canSend && sendBlockers.length > 0 && (
+        <ul style={{ color : "#8a6d00", margin : "8px 0 0", paddingLeft : 18 }}>
+          {sendBlockers.map((b) => (
+            <li key={b}>{b}</li>
+          ))}
+        </ul>
       )}
       <div style={{ display : "flex", gap : 8, marginTop : 12 }}>
         <textarea

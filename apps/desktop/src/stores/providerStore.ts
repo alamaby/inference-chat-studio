@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { create } from "zustand";
 import { formatIpcError } from "../lib/errors";
+import { resolveSelection } from "../lib/selection";
 import type {
   ConnectionStatus,
   ModelInfo,
@@ -49,6 +50,7 @@ interface ProviderState {
   testConnection : (id : string) => Promise<void>;
   refreshModels : (providerId : string) => Promise<void>;
   addModelManual : (providerId : string, remoteModelId : string, displayName? : string) => Promise<void>;
+  deleteProvider : (id : string) => Promise<void>;
   setActive : (providerId : string | null, modelId : string | null) => void;
   setReasoning : (level : ReasoningLevel, customJson : string) => void;
   setSimple : (patch : Partial<Pick<ProviderState, "systemPrompt" | "temperature" | "maxOutput">>) => void;
@@ -97,7 +99,11 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
         modelsByProvider[p.id] = [];
       }
     }
-    set({ providers, modelsByProvider });
+    set((s) => ({
+      providers,
+      modelsByProvider,
+      ...resolveSelection(providers, modelsByProvider, s.activeProviderId, s.activeModelId)
+    }));
   },
 
   testConnection : async (id : string) => {
@@ -122,22 +128,62 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
 
   refreshModels : async (providerId : string) => {
     const models = await invoke<ModelInfo[]>("refresh_models", { providerId });
-    set((s) => ({ modelsByProvider : { ...s.modelsByProvider, [providerId] : models } }));
+    set((s) => {
+      const modelsByProvider = { ...s.modelsByProvider, [providerId] : models };
+      return {
+        modelsByProvider,
+        ...resolveSelection(s.providers, modelsByProvider, s.activeProviderId, s.activeModelId)
+      };
+    });
   },
 
   addModelManual : async (providerId : string, remoteModelId : string, displayName? : string) => {
     const model = await invoke<ModelInfo>("add_model_manual", {
       input : { provider_id : providerId, remote_model_id : remoteModelId, display_name : displayName ?? null }
     });
-    set((s) => ({
-      modelsByProvider : {
+    set((s) => {
+      const modelsByProvider = {
         ...s.modelsByProvider,
         [providerId] : [...(s.modelsByProvider[providerId] ?? []), model]
-      }
-    }));
+      };
+      return {
+        modelsByProvider,
+        ...resolveSelection(s.providers, modelsByProvider, s.activeProviderId, s.activeModelId)
+      };
+    });
   },
 
-  setActive : (providerId, modelId) => set({ activeProviderId : providerId, activeModelId : modelId }),
+  deleteProvider : async (id : string) => {
+    await invoke("delete_provider", { id });
+    set((s) => {
+      const providers = s.providers.filter((p) => p.id !== id);
+      const modelsByProvider = { ...s.modelsByProvider };
+      delete modelsByProvider[id];
+      const statusByProvider = { ...s.statusByProvider };
+      delete statusByProvider[id];
+      const testingByProvider = { ...s.testingByProvider };
+      delete testingByProvider[id];
+      const testErrorByProvider = { ...s.testErrorByProvider };
+      delete testErrorByProvider[id];
+      return {
+        providers,
+        modelsByProvider,
+        statusByProvider,
+        testingByProvider,
+        testErrorByProvider,
+        ...resolveSelection(
+          providers,
+          modelsByProvider,
+          s.activeProviderId === id ? null : s.activeProviderId,
+          s.activeProviderId === id ? null : s.activeModelId
+        )
+      };
+    });
+  },
+
+  setActive : (providerId, modelId) => set((s) => ({
+    ...resolveSelection(s.providers, s.modelsByProvider, providerId, modelId)
+  })),
   setReasoning : (level, customJson) => set({ reasoningLevel : level, customReasoningJson : customJson }),
   setSimple : (patch) => set(patch),
   setError : (msg) => set({ error : msg }),

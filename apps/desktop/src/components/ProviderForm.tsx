@@ -8,6 +8,7 @@ export function ProviderForm() {
   const {
     loadProviders,
     testConnection,
+    deleteProvider,
     statusByProvider,
     testingByProvider,
     testErrorByProvider
@@ -18,7 +19,22 @@ export function ProviderForm() {
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  async function remove(id : string, name : string) {
+    if (!window.confirm(`Delete provider "${name}"? Its stored API key is removed too. Chat history is kept.`)) {
+      return;
+    }
+    setError(null);
+    setDeletingId(id);
+    try {
+      await deleteProvider(id);
+    } catch (e) {
+      setError(formatIpcError(e));
+    } finally {
+      setDeletingId(null);
+    }
+  }
   async function submit() {
     setError(null);
     if (!name.trim()) {
@@ -83,6 +99,13 @@ export function ProviderForm() {
               onClick={() => void testConnection(p.id)}
             >
               {testingByProvider[p.id] ? "Testing…" : "Test connection"}
+            </button>{" "}
+            <button
+              disabled={deletingId === p.id}
+              onClick={() => void remove(p.id, p.name)}
+              title="Delete provider and its stored API key (history is kept)"
+            >
+              {deletingId === p.id ? "Deleting…" : "Delete"}
             </button>
             {testErrorByProvider[p.id] && (
               <p style={{ color : "crimson" }}>{testErrorByProvider[p.id]}</p>

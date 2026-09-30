@@ -14,9 +14,17 @@ export function ModelSelector() {
   const [manualId, setManualId] = useState("");
   const [manualName, setManualName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [filter, setFilter] = useState("");
 
   const activeProvider = providers.find((p) => p.id === activeProviderId) ?? providers[0];
-  const models = activeProvider ? (modelsByProvider[activeProvider.id] ?? []) : [];
+  const allModels = activeProvider ? (modelsByProvider[activeProvider.id] ?? []) : [];
+  const q = filter.trim().toLowerCase();
+  const models = q
+    ? allModels.filter((m) =>
+        m.remote_model_id.toLowerCase().includes(q) ||
+        (m.display_name ?? "").toLowerCase().includes(q)
+      )
+    : allModels;
 
   async function refresh() {
     if (!activeProvider) return;
@@ -61,8 +69,17 @@ export function ModelSelector() {
         <button onClick={() => void refresh()} disabled={!activeProvider || busy}>
           {busy ? "Refreshing…" : "Refresh Models"}
         </button>
+        <input
+          placeholder="Filter models…"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          title="Filter by model id or display name"
+        />
       </div>
-      {models.length === 0 && (
+      {allModels.length > 0 && models.length === 0 && (
+        <p style={{ opacity : 0.7 }}>No models match “{filter.trim()}”.</p>
+      )}
+      {allModels.length === 0 && (
         <p style={{ opacity : 0.7 }}>No cached models yet — refresh or add one manually.</p>
       )}
       <div style={{ display : "flex", gap : 8, marginTop : 8, flexWrap : "wrap" }}>

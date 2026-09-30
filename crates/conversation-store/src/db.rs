@@ -298,6 +298,19 @@ impl Db {
         Ok(())
     }
 
+    /// Detach conversations from a provider before the provider row is
+    /// deleted. `conversations.provider_id` has no `ON DELETE` action, so
+    /// deleting a referenced provider would otherwise fail with an FK error.
+    /// History itself is preserved.
+    pub fn clear_conversation_provider(&self, provider_id: &str) -> Result<()> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        conn.execute(
+            "UPDATE conversations SET provider_id = NULL WHERE provider_id = ?1",
+            params![provider_id],
+        )?;
+        Ok(())
+    }
+
     pub fn insert_message(&self, row: &MessageRow) -> Result<()> {
         let conn = self.conn.lock().expect("db mutex poisoned");
         conn.execute(

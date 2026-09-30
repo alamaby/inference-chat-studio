@@ -162,3 +162,27 @@ fn conversation_list_rename_delete() {
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].id, "c2");
 }
+
+#[test]
+fn deleting_provider_with_history_detaches_conversations_first() {
+    let db = Db::connect_in_memory().expect("connect");
+    db.insert_provider(&provider_row("p1")).expect("insert provider");
+    db.insert_conversation(&ConversationRow {
+        id: "c1".to_string(),
+        title: "t".to_string(),
+        provider_id: Some("p1".to_string()),
+        default_model_id: None,
+        system_prompt: None,
+        settings_json: None,
+        pinned: false,
+        archived: false,
+        created_at: "2026-09-28T00:00:00Z".to_string(),
+        updated_at: "2026-09-28T00:00:00Z".to_string(),
+    })
+    .expect("insert conversation");
+    db.clear_conversation_provider("p1").expect("detach");
+    db.delete_provider("p1").expect("delete provider");
+    let list = db.list_conversations().expect("list");
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].provider_id, None);
+}

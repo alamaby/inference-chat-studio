@@ -441,6 +441,9 @@ pub async fn delete_provider(
         code: "model_not_found".to_string(),
         message: format!("provider not found: {id}"),
     })?;
+    // Detach history first: conversations reference the provider row without
+    // an ON DELETE action, and history must survive provider deletion.
+    state.db.clear_conversation_provider(&id)?;
     state.db.delete_provider(&id)?;
     if let Some(reference) = row.credential_reference {
         let _ = state.secrets.inner.delete(&reference);
