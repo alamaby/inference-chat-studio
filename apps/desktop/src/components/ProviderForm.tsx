@@ -4,7 +4,13 @@ import { useProviderStore } from "../stores/providerStore";
 import { statusLabel } from "../lib/reasoning";
 
 export function ProviderForm() {
-  const { loadProviders, testConnection, statusByProvider } = useProviderStore();
+  const {
+    loadProviders,
+    testConnection,
+    statusByProvider,
+    testingByProvider,
+    testErrorByProvider
+  } = useProviderStore();
   const providers = useProviderStore((s) => s.providers);
   const [name, setName] = useState("");
   const [baseUrl, setBaseUrl] = useState("http://127.0.0.1:8000/v1");
@@ -71,7 +77,15 @@ export function ProviderForm() {
           <li key={p.id}>
             {p.name} — <code>{p.base_url}</code>{" "}
             <span>[{statusLabel(statusByProvider[p.id] ?? "not_tested")}]</span>{" "}
-            <button onClick={() => void testConnection(p.id)}>Test connection</button>
+            <button
+              disabled={!!testingByProvider[p.id]}
+              onClick={() => void testConnection(p.id)}
+            >
+              {testingByProvider[p.id] ? "Testing…" : "Test connection"}
+            </button>
+            {testErrorByProvider[p.id] && (
+              <p style={{ color : "crimson" }}>{testErrorByProvider[p.id]}</p>
+            )}
           </li>
         ))}
       </ul>

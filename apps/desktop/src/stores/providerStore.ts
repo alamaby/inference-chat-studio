@@ -33,6 +33,8 @@ interface ProviderState {
   temperature : number | null;
   maxOutput : number | null;
   statusByProvider : Record<string, ConnectionStatus>;
+  testingByProvider : Record<string, boolean>;
+  testErrorByProvider : Record<string, string | null>;
   conversations : ConversationDto[];
   activeConversationId : string | null;
   conversationSearch : string;
@@ -71,6 +73,8 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
   temperature : null,
   maxOutput : null,
   statusByProvider : {},
+  testingByProvider : {},
+  testErrorByProvider : {},
   conversations : [],
   activeConversationId : null,
   conversationSearch : "",
@@ -96,8 +100,23 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
   },
 
   testConnection : async (id : string) => {
-    const status = await invoke<ConnectionStatus>("test_connection_cmd", { id });
-    set((s) => ({ statusByProvider : { ...s.statusByProvider, [id] : status } }));
+    set((s) => ({
+      testingByProvider : { ...s.testingByProvider, [id] : true },
+      testErrorByProvider : { ...s.testErrorByProvider, [id] : null }
+    }));
+    try {
+      const status = await invoke<ConnectionStatus>("test_connection_cmd", { id });
+      set((s) => ({ statusByProvider : { ...s.statusByProvider, [id] : status } }));
+    } catch (e) {
+      set((s) => ({
+        testErrorByProvider : {
+          ...s.testErrorByProvider,
+          [id] : e instanceof Error ? e.message : String(e)
+        }
+      }));
+    } finally {
+      set((s) => ({ testingByProvider : { ...s.testingByProvider, [id] : false } }));
+    }
   },
 
   refreshModels : async (providerId : string) => {

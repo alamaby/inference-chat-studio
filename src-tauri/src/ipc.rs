@@ -486,8 +486,13 @@ pub async fn test_connection_cmd(
         });
     }
     let api_key = load_api_key(&state, row.credential_reference.as_deref())?;
-    let status = provider_openai::test_connection(&row.base_url, &api_key, 30_000).await?;
-    Ok(status)
+    eprintln!("[ipc] test_connection provider={} url={}", id, row.base_url);
+    let result = provider_openai::test_connection(&row.base_url, &api_key, 30_000).await;
+    match &result {
+        Ok(status) => eprintln!("[ipc] test_connection {id} -> {status:?}"),
+        Err(e) => eprintln!("[ipc] test_connection {id} failed: {e}"),
+    }
+    Ok(result?)
 }
 
 // ---------------------------------------------------------------------------
@@ -513,7 +518,16 @@ pub async fn refresh_models(
         });
     }
     let api_key = load_api_key(&state, row.credential_reference.as_deref())?;
-    let models = provider_openai::list_models(&row.base_url, &api_key, 30_000).await?;
+    eprintln!(
+        "[ipc] refresh_models provider={} url={}",
+        provider_id, row.base_url
+    );
+    let models = provider_openai::list_models(&row.base_url, &api_key, 30_000)
+        .await
+        .map_err(|e| {
+            eprintln!("[ipc] refresh_models {provider_id} failed: {e}");
+            IpcError::from(e)
+        })?;
     let now = now_rfc3339();
     for model in &models {
         let existing: Option<ModelRow> = state
