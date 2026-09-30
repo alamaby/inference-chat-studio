@@ -865,8 +865,9 @@ pub async fn cancel_stream(
 ///
 /// MVP debugging aid: the desktop window has no default DevTools shortcut,
 /// so this command is wired to an in-app button and the F12 key.
+/// Requires the `devtools` cargo feature in release builds (see Cargo.toml).
 #[tauri::command]
-pub async fn open_devtools(window: tauri::WebviewWindow) -> Result<(), IpcError> {
+pub async fn open_devtools(window: tauri::Webview) -> Result<(), IpcError> {
     window.open_devtools();
     Ok(())
 }
