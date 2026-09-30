@@ -72,6 +72,24 @@ export function ChatView() {
         useProviderStore.getState().messages.filter((m) => m.status !== "streaming")
       );
       setError(`[${event.payload.code}] ${event.payload.message}`);
+      if (event.payload.request_url) {
+        setLastDiagnostics({
+          url : event.payload.request_url,
+          method : "POST",
+          requestBody : event.payload.request_body ?? null,
+          compatibility : "chat_completions",
+          statusCode : null,
+          responseHeaders : null,
+          usage : null,
+          durationMs : null,
+          ttftMs : null,
+          finishReason : null,
+          requestId : null,
+          rawBody : `[${event.payload.code}] ${event.payload.message}`,
+          eventCount : null,
+          cancelled : false
+        });
+      }
       setStreaming(false);
       setActiveStream(null);
     }).then((fn) => {

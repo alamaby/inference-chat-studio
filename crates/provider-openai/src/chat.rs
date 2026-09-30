@@ -145,14 +145,25 @@ pub async fn stream_chat(
 
     let status_code = response.status().as_u16();
     if status_code == 401 || status_code == 403 {
+        // Keep the provider's error body: OpenAI-style errors name the exact
+        // cause (e.g. insufficient quota, model access denied). The body is
+        // truncated and never includes header values (those are separate).
+        let text = response.text().await.unwrap_or_default();
         return Err(ProviderError::Unauthorized(format!(
-            "POST /chat/completions returned {status_code}"
+            "POST /chat/completions returned {status_code}: {}",
+            truncate(&text, 2048)
         )));
     }
     if status_code == 404 {
-        // Body intentionally dropped: it can echo the model id back, and the
-        // caller already knows it. Never include header values in errors.
-        return Err(ProviderError::ModelNotFound(req.model.clone()));
+        let text = response.text().await.unwrap_or_default();
+        let detail = if text.trim().is_empty() {
+            req.model.clone()
+        } else {
+            format!("{}: {}", req.model, truncate(&text, 2048))
+        };
+        // Body intentionally excludes header values; the caller already
+        // knows the model id, but the provider message disambiguates.
+        return Err(ProviderError::ModelNotFound(detail));
     }
     if !(200..300).contains(&status_code) {
         let text = response.text().await.unwrap_or_default();
@@ -329,5 +340,59 @@ mod tests {
         // the (mock-instant) total; on real networks it is strictly smaller.
         let ttft = result.ttft_ms.expect("ttft must be measured");
         assert!(ttft >= 0);
+    }
+
+    #[tokio::test]
+    async fn error_403_keeps_provider_message() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(403).set_body_json(serde_json::json!({
+                    "error": { "message": "insufficient quota", "code": "quota_exceeded" }
+                })),
+            )
+            .mount(&server)
+            .await;
+        let err = stream_chat(
+            &format!("{}/v1", server.uri()),
+            "k",
+            &req(ReasoningLevel::None),
+            true,
+        )
+        .await
+        .expect_err("must fail");
+        match err {
+            provider_core::ProviderError::Unauthorized(msg) => {
+                assert!(msg.contains("403"), "status preserved: {msg}");
+                assert!(msg.contains("insufficient quota"), "provider message kept: {msg}");
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn error_404_names_model_and_keeps_body() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(404).set_body_string("no such model"))
+            .mount(&server)
+            .await;
+        let err = stream_chat(
+            &format!("{}/v1", server.uri()),
+            "k",
+            &req(ReasoningLevel::None),
+            true,
+        )
+        .await
+        .expect_err("must fail");
+        match err {
+            provider_core::ProviderError::ModelNotFound(msg) => {
+                assert!(msg.contains("m1"), "model named: {msg}");
+                assert!(msg.contains("no such model"), "body kept: {msg}");
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
     }
 }

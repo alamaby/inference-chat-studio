@@ -113,4 +113,6 @@ export interface ChatErrorEvent {
   conversation_id : string;
   code : string;
   message : string;
+  request_url? : string | null;
+  request_body? : unknown;
 }

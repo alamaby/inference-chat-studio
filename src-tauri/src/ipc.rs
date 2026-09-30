@@ -219,6 +219,12 @@ pub struct ChatErrorEvent {
     pub conversation_id: String,
     pub code: String,
     pub message: String,
+    /// Request diagnostics so the Inspector can render even on failure.
+    /// Never contains secret values (the body built here has no auth fields).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_body: Option<serde_json::Value>,
 }
 
 // ---------------------------------------------------------------------------
@@ -311,7 +317,11 @@ async fn emit_error(
     stream_id: &str,
     conversation_id: &str,
     err: IpcError,
+    diagnostics: Option<(String, serde_json::Value)>,
 ) {
+    let (request_url, request_body) = diagnostics
+        .map(|(u, b)| (Some(u), Some(b)))
+        .unwrap_or((None, None));
     let _ = app.emit(
         "chat-error",
         ChatErrorEvent {
@@ -319,6 +329,8 @@ async fn emit_error(
             conversation_id: conversation_id.to_string(),
             code: err.code,
             message: err.message,
+            request_url,
+            request_body,
         },
     );
 }
@@ -715,8 +727,12 @@ pub async fn stream_chat_cmd(
         custom_json: input.reasoning_custom_json.clone(),
     };
     reasoning.validate().map_err(IpcError::from)?;
-    provider_openai::map_reasoning(&reasoning.level, &caps, reasoning.custom_json.as_ref())
-        .map_err(IpcError::from)?;
+    let effort = provider_openai::map_reasoning(
+        &reasoning.level,
+        &caps,
+        reasoning.custom_json.as_ref(),
+    )
+    .map_err(IpcError::from)?;
 
     let api_key = load_api_key(&state, row.credential_reference.as_deref())?;
     let stream_id = uuid::Uuid::new_v4().to_string();
@@ -738,6 +754,18 @@ pub async fn stream_chat_cmd(
     };
     let reasoning_config_json =
         serde_json::to_string(&request.reasoning).unwrap_or_else(|_| "{}".to_string());
+    // Diagnostics body for the Inspector (also attached to chat-error).
+    // Contains no secrets: auth travels in headers, never in this JSON.
+    let diag_url = format!(
+        "{}/chat/completions",
+        provider_openai::normalize_base_url(&row.base_url)
+    );
+    let diag_body = provider_openai::build_chat_body(
+        &request,
+        effort,
+        caps.supports_temperature,
+    )
+    .unwrap_or(serde_json::Value::Null);
 
     // Persist the user message first (linear history, MVP-0).
     let now = now_rfc3339();
@@ -844,7 +872,14 @@ pub async fn stream_chat_cmd(
                         created_at: now,
                     });
                 }
-                emit_error(&app_clone, &stream_id_clone, &conversation_id, err).await;
+                emit_error(
+                    &app_clone,
+                    &stream_id_clone,
+                    &conversation_id,
+                    err,
+                    Some((diag_url.clone(), diag_body.clone())),
+                )
+                .await;
             }
         }
     });
