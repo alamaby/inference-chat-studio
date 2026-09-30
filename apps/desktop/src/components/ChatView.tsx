@@ -187,37 +187,37 @@ export function ChatView() {
   }
 
   return (
-    <section style={{ border : "1px solid #ddd", borderRadius : 8, padding : 12 }}>
+    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <MessageList />
       {reasoningBlocked && (
-        <p style={{ color : "crimson" }}>
+        <p className="mt-2 text-sm text-red-600 dark:text-red-400">
           Reasoning effort is not supported by this model — switch to Automatic/None or pick another model.
         </p>
       )}
       {error && (
-        <p style={{ color : "crimson" }}>
-          {error} <button onClick={() => void send()}>Retry</button>
+        <p className="mt-2 text-sm text-red-600 dark:text-red-400">
+          {error} <button onClick={() => void send()} className="ml-2 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">Retry</button>
         </p>
       )}
       {!canSend && sendBlockers.length > 0 && (
-        <ul style={{ color : "#8a6d00", margin : "8px 0 0", paddingLeft : 18 }}>
+        <ul className="mb-0 mt-2 list-disc pl-5 text-sm text-amber-700 dark:text-amber-400">
           {sendBlockers.map((b) => (
             <li key={b}>{b}</li>
           ))}
         </ul>
       )}
-      <div style={{ display : "flex", gap : 8, marginTop : 12 }}>
+      <div className="mt-3 flex gap-2">
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
           rows={3}
           placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
-          style={{ flex : 1 }}
+          className="w-full flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:focus:ring-brand-700"
         />
         {streaming
-          ? <button onClick={() => void stop()}>Stop</button>
-          : <button onClick={() => void send()} disabled={!canSend}>Send</button>}
+          ? <button onClick={() => void stop()} className="rounded-lg bg-red-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-700">Stop</button>
+          : <button onClick={() => void send()} disabled={!canSend} className="rounded-lg bg-brand-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-brand-500 dark:hover:bg-brand-600">Send</button>}
       </div>
       {lastDiagnostics && <Inspector {...lastDiagnostics} />}
     </section>

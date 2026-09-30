@@ -1,5 +1,6 @@
 import ReactMarkdown from "react-markdown";
 import { useProviderStore } from "../stores/providerStore";
+import { btn, code, hintText } from "../lib/ui";
 
 export function MessageList() {
   const messages = useProviderStore((s) => s.messages);
@@ -13,22 +14,35 @@ export function MessageList() {
   }
 
   if (messages.length === 0) {
-    return <p style={{ opacity : 0.7 }}>No messages yet. Send the first one below.</p>;
+    return <p className={hintText}>No messages yet. Send the first one below.</p>;
   }
 
   return (
-    <div style={{ display : "grid", gap : 12 }}>
+    <div className="grid gap-3">
       {messages.map((m, i) => (
-        <article key={i} style={{ border : "1px solid #eee", borderRadius : 8, padding : 10 }}>
-          <header style={{ display : "flex", gap : 8, alignItems : "baseline" }}>
-            <strong>{m.role}</strong>
-            {m.model && <code style={{ fontSize : 12 }}>{m.model}</code>}
-            {m.status && m.status !== "done" && <span>({m.status})</span>}
-            <button style={{ marginLeft : "auto" }} onClick={() => void copy(m.content)}>
+        <article
+          key={i}
+          className={`rounded-xl border px-3.5 py-2.5 text-sm leading-relaxed ${
+            m.role === "user"
+              ? "ml-12 border-brand-100 bg-brand-50 dark:border-brand-700/40 dark:bg-brand-700/15"
+              : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+          }`}
+        >
+          <header className="mb-1 flex items-baseline gap-2">
+            <strong className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              {m.role}
+            </strong>
+            {m.model && <code className={code}>{m.model}</code>}
+            {m.status && m.status !== "done" && (
+              <span className="text-xs text-slate-500">({m.status})</span>
+            )}
+            <button onClick={() => void copy(m.content)} className={`${btn} ml-auto !px-2 !py-0.5 !text-xs`}>
               Copy
             </button>
           </header>
-          <ReactMarkdown>{m.content}</ReactMarkdown>
+          <div className="prose-sm max-w-none dark:prose-invert">
+            <ReactMarkdown>{m.content}</ReactMarkdown>
+          </div>
         </article>
       ))}
     </div>

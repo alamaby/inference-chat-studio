@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { maskHeaders, truncateRaw } from "../lib/inspector";
+import { btn, code } from "../lib/ui";
 
 export interface InspectorProps {
   url : string;
@@ -18,8 +19,18 @@ export interface InspectorProps {
   cancelled? : boolean;
 }
 
+function Stat({ k, v } : { k : string; v : string }) {
+  return (
+    <div className="flex gap-2">
+      <span className="w-28 shrink-0 font-medium text-slate-500 dark:text-slate-400">{k}</span>
+      <code className={`${code} break-all`}>{v}</code>
+    </div>
+  );
+}
+
 export function Inspector(props : InspectorProps) {
   const [tab, setTab] = useState<"request" | "response">("request");
+  const [open, setOpen] = useState(false);
   const masked = maskHeaders(props.responseHeaders ?? {});
 
   async function copy(text : string) {
@@ -32,41 +43,52 @@ export function Inspector(props : InspectorProps) {
 
   const { text : rawText, truncated } = truncateRaw(props.rawBody ?? "");
 
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className={`${btn} mt-2 !text-xs`}>
+        Show request inspector
+      </button>
+    );
+  }
+
   return (
-    <div style={{ border : "1px solid #ddd", borderRadius : 8, padding : 10, marginTop : 8 }}>
-      <div style={{ display : "flex", gap : 8, marginBottom : 8 }}>
-        <button onClick={() => setTab("request")} disabled={tab === "request"}>Request</button>
-        <button onClick={() => setTab("response")} disabled={tab === "response"}>Response</button>
-        {props.cancelled && <span style={{ color : "crimson" }}>(cancelled — partial duration)</span>}
+    <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px] dark:border-slate-700 dark:bg-slate-800/50">
+      <div className="mb-2 flex gap-2">
+        <button onClick={() => setTab("request")} disabled={tab === "request"} className={btn}>Request</button>
+        <button onClick={() => setTab("response")} disabled={tab === "response"} className={btn}>Response</button>
+        {props.cancelled && <span className="text-red-600 dark:text-red-400">(cancelled — partial duration)</span>}
+        <button onClick={() => setOpen(false)} className={`${btn} ml-auto`}>Hide</button>
       </div>
       {tab === "request" ? (
-        <div style={{ fontSize : 13 }}>
-          <div><strong>URL:</strong> <code>{props.url}</code></div>
-          <div><strong>Method:</strong> <code>{props.method}</code></div>
-          <div><strong>Compatibility:</strong> <code>{props.compatibility}</code></div>
-          <div><strong>Headers:</strong> <code>Authorization: [REDACTED]</code></div>
-          <pre style={{ background : "#f6f6f6", padding : 8, overflow : "auto" }}>
+        <div className="grid gap-1.5">
+          <Stat k="URL" v={props.url} />
+          <Stat k="Method" v={props.method} />
+          <Stat k="Compatibility" v={props.compatibility} />
+          <Stat k="Headers" v="Authorization: [REDACTED]" />
+          <pre className="overflow-auto rounded-lg bg-slate-900 p-2.5 font-mono text-xs text-slate-100 dark:bg-black/40">
             {JSON.stringify(props.requestBody, null, 2)}
           </pre>
         </div>
       ) : (
-        <div style={{ fontSize : 13 }}>
-          <div><strong>Status:</strong> <code>{props.statusCode ?? "—"}</code></div>
-          <div><strong>TTFT:</strong> <code>{props.ttftMs != null ? `${props.ttftMs} ms` : "—"}</code></div>
-          <div><strong>Duration:</strong> <code>{props.durationMs != null ? `${props.durationMs} ms` : "—"}</code></div>
-          <div><strong>Finish reason:</strong> <code>{props.finishReason ?? "—"}</code></div>
-          <div><strong>Usage:</strong> <code>{props.usage ? JSON.stringify(props.usage) : "—"}</code></div>
-          <div><strong>Request ID:</strong> <code>{props.requestId ?? "—"}</code></div>
-          <div><strong>Events:</strong> <code>{props.eventCount ?? "—"}</code></div>
-          <div><strong>Headers (masked):</strong></div>
-          <pre style={{ background : "#f6f6f6", padding : 8, overflow : "auto" }}>
+        <div className="grid gap-1.5">
+          <Stat k="Status" v={props.statusCode != null ? String(props.statusCode) : "—"} />
+          <Stat k="TTFT" v={props.ttftMs != null ? `${props.ttftMs} ms` : "—"} />
+          <Stat k="Duration" v={props.durationMs != null ? `${props.durationMs} ms` : "—"} />
+          <Stat k="Finish reason" v={props.finishReason ?? "—"} />
+          <Stat k="Usage" v={props.usage ? JSON.stringify(props.usage) : "—"} />
+          <Stat k="Request ID" v={props.requestId ?? "—"} />
+          <Stat k="Events" v={props.eventCount != null ? String(props.eventCount) : "—"} />
+          <div className="font-medium text-slate-500 dark:text-slate-400">Headers (masked)</div>
+          <pre className="overflow-auto rounded-lg bg-slate-900 p-2.5 font-mono text-xs text-slate-100 dark:bg-black/40">
             {JSON.stringify(masked, null, 2)}
           </pre>
-          <div>
-            <strong>Raw body{truncated ? " (truncated)" : ""}:</strong>{" "}
-            <button onClick={() => void copy(rawText)}>Copy</button>
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-slate-500 dark:text-slate-400">
+              Raw body{truncated ? " (truncated)" : ""}
+            </span>
+            <button onClick={() => void copy(rawText)} className={btn}>Copy</button>
           </div>
-          <pre style={{ background : "#f6f6f6", padding : 8, overflow : "auto", maxHeight : 240 }}>
+          <pre className="max-h-60 overflow-auto rounded-lg bg-slate-900 p-2.5 font-mono text-xs text-slate-100 dark:bg-black/40">
             {rawText || "—"}
           </pre>
         </div>

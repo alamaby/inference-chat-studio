@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useProviderStore } from "../stores/providerStore";
+import { btn, btnPrimary, card, hintText, input, sectionTitle, select } from "../lib/ui";
 
 export function ConversationList() {
   const {
@@ -42,26 +43,28 @@ export function ConversationList() {
   }
 
   return (
-    <section style={{ border : "1px solid #ddd", borderRadius : 8, padding : 12, marginBottom : 12 }}>
-      <h3 style={{ margin : "0 0 8px" }}>Conversations</h3>
-      <div style={{ display : "flex", gap : 8, marginBottom : 8 }}>
+    <section className={card}>
+      <h3 className={sectionTitle}>Conversations</h3>
+      <div className="mb-2 flex gap-2">
         <input
           placeholder="New conversation title…"
           value={draftTitle}
           onChange={(e) => setDraftTitle(e.target.value)}
-          style={{ flex : 1 }}
+          className={`${input} flex-1`}
         />
-        <button onClick={() => void create()}>New</button>
+        <button onClick={() => void create()} className={btnPrimary}>New</button>
       </div>
-      <div style={{ display : "flex", gap : 8, marginBottom : 8, flexWrap : "wrap" }}>
+      <div className="mb-2 flex flex-wrap gap-2">
         <input
           placeholder="Search…"
           value={conversationSearch}
           onChange={(e) => setConversationSearch(e.target.value)}
+          className={`${input} flex-1`}
         />
         <select
           value={conversationFilterProvider ?? ""}
           onChange={(e) => setConversationFilters(e.target.value || null, conversationFilterModel)}
+          className={select}
         >
           <option value="">All providers</option>
           {providers.map((p) => (
@@ -72,29 +75,35 @@ export function ConversationList() {
           placeholder="Filter model…"
           value={conversationFilterModel ?? ""}
           onChange={(e) => setConversationFilters(conversationFilterProvider, e.target.value || null)}
+          className={input}
         />
       </div>
-      <ul style={{ paddingLeft : 18, margin : 0 }}>
+      <ul className="m-0 space-y-1">
         {visible.map((c) => (
-          <li key={c.id} style={{ fontWeight : c.id === activeConversationId ? "bold" : "normal" }}>
+          <li
+            key={c.id}
+            className={`rounded-lg px-2.5 py-1.5 text-sm ${
+              c.id === activeConversationId
+                ? "bg-brand-50 font-semibold text-brand-700 dark:bg-brand-700/20 dark:text-brand-100"
+                : "hover:bg-slate-50 dark:hover:bg-slate-800/60"
+            }`}
+          >
             {renamingId === c.id ? (
-              <>
-                <input value={renameValue} onChange={(e) => setRenameValue(e.target.value)} />
-                <button onClick={() => void commitRename(c.id)}>Save</button>
-              </>
+              <span className="flex gap-2">
+                <input value={renameValue} onChange={(e) => setRenameValue(e.target.value)} className={`${input} flex-1`} />
+                <button onClick={() => void commitRename(c.id)} className={btn}>Save</button>
+              </span>
             ) : (
-              <>
-                {c.title}{" "}
-                <button onClick={() => { setRenamingId(c.id); setRenameValue(c.title); }}>
-                  Rename
-                </button>{" "}
-                <button onClick={() => void deleteConversation(c.id)}>Delete</button>
-              </>
+              <span className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate">{c.title}</span>
+                <button onClick={() => { setRenamingId(c.id); setRenameValue(c.title); }} className={btn}>Rename</button>
+                <button onClick={() => void deleteConversation(c.id)} className={btn}>Delete</button>
+              </span>
             )}
           </li>
         ))}
       </ul>
-      {visible.length === 0 && <p style={{ opacity : 0.7 }}>No conversations match.</p>}
+      {visible.length === 0 && <p className={hintText}>No conversations match.</p>}
     </section>
   );
 }

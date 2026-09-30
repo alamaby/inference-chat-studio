@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useProviderStore } from "../stores/providerStore";
+import { btn, card, hintText, input, sectionTitle, select } from "../lib/ui";
 
 export function ModelSelector() {
   const {
@@ -44,12 +45,13 @@ export function ModelSelector() {
   }
 
   return (
-    <section style={{ border : "1px solid #ddd", borderRadius : 8, padding : 12, marginBottom : 12 }}>
-      <h3 style={{ margin : "0 0 8px" }}>Model</h3>
-      <div style={{ display : "flex", gap : 8, flexWrap : "wrap" }}>
+    <section className={card}>
+      <h3 className={sectionTitle}>Model</h3>
+      <div className="flex flex-wrap gap-2">
         <select
           value={activeProvider?.id ?? ""}
           onChange={(e) => setActive(e.target.value || null, null)}
+          className={select}
         >
           {providers.map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
@@ -58,6 +60,7 @@ export function ModelSelector() {
         <select
           value={activeModelId ?? ""}
           onChange={(e) => setActive(activeProviderId, e.target.value || null)}
+          className={select}
         >
           <option value="">Select model…</option>
           {models.map((m) => (
@@ -66,7 +69,7 @@ export function ModelSelector() {
             </option>
           ))}
         </select>
-        <button onClick={() => void refresh()} disabled={!activeProvider || busy}>
+        <button onClick={() => void refresh()} disabled={!activeProvider || busy} className={btn}>
           {busy ? "Refreshing…" : "Refresh Models"}
         </button>
         <input
@@ -74,18 +77,19 @@ export function ModelSelector() {
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           title="Filter by model id or display name"
+          className={input}
         />
       </div>
       {allModels.length > 0 && models.length === 0 && (
-        <p style={{ opacity : 0.7 }}>No models match “{filter.trim()}”.</p>
+        <p className={`${hintText} mt-2`}>No models match “{filter.trim()}”.</p>
       )}
       {allModels.length === 0 && (
-        <p style={{ opacity : 0.7 }}>No cached models yet — refresh or add one manually.</p>
+        <p className={`${hintText} mt-2`}>No cached models yet — refresh or add one manually.</p>
       )}
-      <div style={{ display : "flex", gap : 8, marginTop : 8, flexWrap : "wrap" }}>
-        <input placeholder="model id (manual)" value={manualId} onChange={(e) => setManualId(e.target.value)} />
-        <input placeholder="display name (optional)" value={manualName} onChange={(e) => setManualName(e.target.value)} />
-        <button onClick={() => void addManual()}>Add Model Manually</button>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <input placeholder="model id (manual)" value={manualId} onChange={(e) => setManualId(e.target.value)} className={input} />
+        <input placeholder="display name (optional)" value={manualName} onChange={(e) => setManualName(e.target.value)} className={input} />
+        <button onClick={() => void addManual()} className={btn}>Add Model Manually</button>
       </div>
     </section>
   );

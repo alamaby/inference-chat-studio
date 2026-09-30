@@ -1,6 +1,7 @@
 import { useProviderStore } from "../stores/providerStore";
 import { REASONING_LEVELS } from "../../../../packages/api-types/src/index";
 import { availableReasoningOptions } from "../lib/reasoning";
+import { card, hintText, input, label, sectionTitle, select, textarea } from "../lib/ui";
 
 export function SettingsSimple() {
   const {
@@ -22,17 +23,17 @@ export function SettingsSimple() {
   void REASONING_LEVELS;
 
   return (
-    <section style={{ border : "1px solid #ddd", borderRadius : 8, padding : 12, marginBottom : 12 }}>
-      <h3 style={{ margin : "0 0 8px" }}>Settings (simple)</h3>
-      <label style={{ display : "block", marginBottom : 8 }}>
+    <section className={card}>
+      <h3 className={sectionTitle}>Settings (simple)</h3>
+      <label className={`${label} mb-2 block`}>
         Reasoning effort{" "}
         {!supported && (
-          <span style={{ opacity : 0.7 }}>— Not supported by this model</span>
+          <span className={hintText}>— Not supported by this model</span>
         )}
         <select
           value={reasoningLevel}
           onChange={(e) => setReasoning(e.target.value as typeof reasoningLevel, customReasoningJson)}
-          style={{ width : "100%" }}
+          className={select}
         >
           {options.map((o) => (
             <option key={o.level} value={o.level} disabled={!o.enabled}>
@@ -42,27 +43,27 @@ export function SettingsSimple() {
         </select>
       </label>
       {reasoningLevel === "Custom" && (
-        <label style={{ display : "block", marginBottom : 8 }}>
+        <label className={`${label} mb-2 block`}>
           Custom reasoning JSON (saved per conversation preset)
           <textarea
             value={customReasoningJson}
             onChange={(e) => setReasoning(e.target.value as typeof reasoningLevel, e.target.value)}
             rows={3}
-            style={{ width : "100%", fontFamily : "monospace" }}
+            className={`${textarea} font-mono`}
           />
         </label>
       )}
-      <label style={{ display : "block", marginBottom : 8 }}>
+      <label className={`${label} mb-2 block`}>
         System prompt
         <textarea
           value={systemPrompt}
           onChange={(e) => setSimple({ systemPrompt : e.target.value })}
           rows={3}
-          style={{ width : "100%" }}
+          className={textarea}
         />
       </label>
-      <div style={{ display : "flex", gap : 8 }}>
-        <label>
+      <div className="flex gap-2">
+        <label className={label}>
           Temperature
           <input
             type="number"
@@ -71,20 +72,22 @@ export function SettingsSimple() {
             placeholder={caps && !caps.supports_temperature ? "unsupported" : "auto"}
             disabled={!!caps && !caps.supports_temperature}
             onChange={(e) => setSimple({ temperature : e.target.value === "" ? null : Number(e.target.value) })}
+            className={input}
           />
         </label>
-        <label>
+        <label className={label}>
           Max output
           <input
             type="number"
             value={maxOutput ?? ""}
             placeholder="auto"
             onChange={(e) => setSimple({ maxOutput : e.target.value === "" ? null : Number(e.target.value) })}
+            className={input}
           />
         </label>
-        <label>
+        <label className={label}>
           Streaming
-          <input type="checkbox" checked disabled title="Locked on in MVP-0" />
+          <input type="checkbox" checked disabled title="Locked on in MVP-0" className="h-4 w-4 accent-blue-600" />
         </label>
       </div>
     </section>

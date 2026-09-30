@@ -6,6 +6,7 @@ import { ModelSelector } from "./components/ModelSelector";
 import { SettingsSimple } from "./components/SettingsSimple";
 import { ChatView } from "./components/ChatView";
 import { ConversationList } from "./components/ConversationList";
+import { btn, errorText, hintText } from "./lib/ui";
 
 async function openDevtools(): Promise<void> {
   // No-op in plain browsers (vite dev without Tauri runtime).
@@ -38,33 +39,31 @@ export function App() {
   }, []);
 
   return (
-    <div style={{ fontFamily : "system-ui, sans-serif", padding : 16, maxWidth : 1100, margin : "0 auto" }}>
-      <header>
-        <div style={{ display : "flex", alignItems : "baseline", gap : 12 }}>
-          <h1 style={{ margin : "0 0 4px" }}>Inference Chat Studio</h1>
-          <button
-            onClick={() => void openDevtools()}
-            title="Open WebView DevTools (or press F12)"
-            style={{ marginLeft : "auto" }}
-          >
-            DevTools
-          </button>
-        </div>
-        <p style={{ margin : "0 0 12px", opacity : 0.7 }}>
-          Prompt dikirim ke provider; history tersimpan lokal.
-        </p>
-        {error && <p style={{ color : "crimson" }}>{error}</p>}
-      </header>
-      <div style={{ display : "grid", gridTemplateColumns : "360px 1fr", gap : 12 }}>
+    <div className="flex h-screen flex-col bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-5 py-3 dark:border-slate-800 dark:bg-slate-900">
         <div>
+          <h1 className="text-lg font-bold leading-tight">Inference Chat Studio</h1>
+          <p className={hintText}>Prompt dikirim ke provider; history tersimpan lokal.</p>
+        </div>
+        <button
+          onClick={() => void openDevtools()}
+          title="Open WebView DevTools (or press F12)"
+          className={`${btn} ml-auto`}
+        >
+          DevTools
+        </button>
+      </header>
+      {error && <p className={`${errorText} border-b border-red-200 px-5 py-2`}>{error}</p>}
+      <div className="mx-auto flex w-full max-w-6xl flex-1 gap-4 overflow-hidden p-4">
+        <aside className="w-[380px] shrink-0 space-y-4 overflow-y-auto pr-1">
           <ProviderForm />
           <ModelSelector />
           <SettingsSimple />
           <ConversationList />
-        </div>
-        <div>
+        </aside>
+        <main className="min-w-0 flex-1 overflow-y-auto">
           <ChatView />
-        </div>
+        </main>
       </div>
     </div>
   );
