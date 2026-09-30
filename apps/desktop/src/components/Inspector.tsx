@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { maskHeaders, truncateRaw } from "../lib/inspector";
+import { computeMetrics, formatTokensPerSecond } from "../lib/metrics";
 import { btn, code } from "../lib/ui";
 
 export interface InspectorProps {
@@ -7,6 +8,7 @@ export interface InspectorProps {
   method : string;
   requestBody : unknown;
   compatibility : string;
+  modelName? : string | null;
   statusCode? : number | null;
   responseHeaders? : Record<string, string> | null;
   usage? : unknown;
@@ -28,10 +30,15 @@ function Stat({ k, v } : { k : string; v : string }) {
   );
 }
 
+function tokens(v : number | null): string {
+  return v === null ? "—" : v.toLocaleString("en-US");
+}
+
 export function Inspector(props : InspectorProps) {
-  const [tab, setTab] = useState<"request" | "response">("request");
+  const [tab, setTab] = useState<"request" | "response" | "metrics">("request");
   const [open, setOpen] = useState(false);
   const masked = maskHeaders(props.responseHeaders ?? {});
+  const metrics = computeMetrics({ usage : props.usage, durationMs : props.durationMs });
 
   async function copy(text : string) {
     try {
@@ -56,6 +63,7 @@ export function Inspector(props : InspectorProps) {
       <div className="mb-2 flex gap-2">
         <button onClick={() => setTab("request")} disabled={tab === "request"} className={btn}>Request</button>
         <button onClick={() => setTab("response")} disabled={tab === "response"} className={btn}>Response</button>
+        <button onClick={() => setTab("metrics")} disabled={tab === "metrics"} className={btn}>Metrics</button>
         {props.cancelled && <span className="text-red-600 dark:text-red-400">(cancelled — partial duration)</span>}
         <button onClick={() => setOpen(false)} className={`${btn} ml-auto`}>Hide</button>
       </div>
@@ -69,7 +77,7 @@ export function Inspector(props : InspectorProps) {
             {JSON.stringify(props.requestBody, null, 2)}
           </pre>
         </div>
-      ) : (
+      ) : tab === "response" ? (
         <div className="grid gap-1.5">
           <Stat k="Status" v={props.statusCode != null ? String(props.statusCode) : "—"} />
           <Stat k="TTFT" v={props.ttftMs != null ? `${props.ttftMs} ms` : "—"} />
@@ -91,6 +99,20 @@ export function Inspector(props : InspectorProps) {
           <pre className="max-h-60 overflow-auto rounded-lg bg-slate-900 p-2.5 font-mono text-xs text-slate-100 dark:bg-black/40">
             {rawText || "—"}
           </pre>
+        </div>
+      ) : (
+        <div className="grid gap-1.5">
+          <Stat k="Model" v={props.modelName ?? "—"} />
+          <Stat k="Input tokens" v={tokens(metrics.inputTokens)} />
+          <Stat k="Output tokens" v={tokens(metrics.outputTokens)} />
+          <Stat k="Reasoning tokens" v={tokens(metrics.reasoningTokens)} />
+          <Stat k="Total tokens" v={tokens(metrics.totalTokens)} />
+          <Stat k="Throughput" v={formatTokensPerSecond(metrics.tokensPerSecond)} />
+          <Stat k="TTFT" v={props.ttftMs != null ? `${props.ttftMs} ms` : "—"} />
+          <Stat k="Duration" v={props.durationMs != null ? `${props.durationMs} ms` : "—"} />
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Token counts come from the provider and are shown only when reported.
+          </p>
         </div>
       )}
     </div>

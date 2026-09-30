@@ -27,6 +27,7 @@ fn main() {
             ipc::list_conversations,
             ipc::rename_conversation,
             ipc::delete_conversation,
+            ipc::list_messages_cmd,
             ipc::stream_chat_cmd,
             ipc::cancel_stream,
             ipc::open_devtools,

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useProviderStore } from "../stores/providerStore";
-import { btn, card, hintText, input, sectionTitle, select } from "../lib/ui";
+import { btn, card, hintText, input, label, sectionTitle, select } from "../lib/ui";
 
 export function ModelSelector() {
   const {
@@ -86,10 +86,25 @@ export function ModelSelector() {
       {allModels.length === 0 && (
         <p className={`${hintText} mt-2`}>No cached models yet — refresh or add one manually.</p>
       )}
-      <div className="mt-2 flex flex-wrap gap-2">
-        <input placeholder="model id (manual)" value={manualId} onChange={(e) => setManualId(e.target.value)} className={input} />
-        <input placeholder="display name (optional)" value={manualName} onChange={(e) => setManualName(e.target.value)} className={input} />
-        <button onClick={() => void addManual()} className={btn}>Add Model Manually</button>
+      <div className="mt-2 rounded-lg border border-dashed border-slate-300 p-2.5 dark:border-slate-700">
+        <p className="mb-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+          Add model manually
+        </p>
+        <p className={`${hintText} mb-1.5 !text-xs`}>
+          Only needed when the endpoint has no model list (refresh returns nothing).
+          The ID must match the provider exactly.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <label className={label}>
+            Model ID (required)
+            <input placeholder="e.g. gpt-oss-20b:free" value={manualId} onChange={(e) => setManualId(e.target.value)} className={input} />
+          </label>
+          <label className={label}>
+            Display name (optional)
+            <input placeholder="e.g. My GPT" value={manualName} onChange={(e) => setManualName(e.target.value)} className={input} />
+          </label>
+          <button onClick={() => void addManual()} className={`${btn} self-end`}>Add Model Manually</button>
+        </div>
       </div>
     </section>
   );

@@ -28,14 +28,24 @@ export function ChatView() {
   const [draft, setDraft] = useState("");
   const [activeStream, setActiveStream] = useState<string | null>(null);
   const [lastDiagnostics, setLastDiagnostics] = useState<InspectorProps | null>(null);
+  const [stuckToBottom, setStuckToBottom] = useState(true);
   const historyRef = useRef<string[]>([]);
   const historyIdx = useRef<number>(-1);
+  // Guards against double-processing one backend event when two listeners
+  // are briefly alive (React StrictMode remounts effects; the async
+  // `listen()` promise can resolve after cleanup ran).
+  const handledStreamsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
+    let cancelled = false;
     let unlistenDone: (() => void) | undefined;
     let unlistenError: (() => void) | undefined;
     void listen<ChatDoneEvent>("chat-done", (event) => {
       const done = event.payload;
+      if (handledStreamsRef.current.has(done.stream_id)) {
+        return;
+      }
+      handledStreamsRef.current.add(done.stream_id);
       setMessages([
         ...useProviderStore.getState().messages.filter((m) => m.status !== "streaming"),
         {
@@ -51,6 +61,7 @@ export function ChatView() {
         method : "POST",
         requestBody : { model : done.model },
         compatibility : "chat_completions",
+        modelName : done.model,
         statusCode : done.status_code,
         responseHeaders : null,
         usage : done.usage,
@@ -65,7 +76,11 @@ export function ChatView() {
       setStreaming(false);
       setActiveStream(null);
     }).then((fn) => {
-      unlistenDone = fn;
+      if (cancelled) {
+        fn();
+      } else {
+        unlistenDone = fn;
+      }
     });
     void listen<ChatErrorEvent>("chat-error", (event) => {
       setMessages(
@@ -78,6 +93,7 @@ export function ChatView() {
           method : "POST",
           requestBody : event.payload.request_body ?? null,
           compatibility : "chat_completions",
+          modelName : useProviderStore.getState().activeModelId,
           statusCode : null,
           responseHeaders : null,
           usage : null,
@@ -93,14 +109,47 @@ export function ChatView() {
       setStreaming(false);
       setActiveStream(null);
     }).then((fn) => {
-      unlistenError = fn;
+      if (cancelled) {
+        fn();
+      } else {
+        unlistenError = fn;
+      }
     });
     return () => {
+      cancelled = true;
       unlistenDone?.();
       unlistenError?.();
     };
   }, [setError, setMessages, setStreaming]);
 
+  // Smart auto-scroll: follow new messages only while the user is already
+  // near the bottom. Reading history never yanks the viewport.
+  useEffect(() => {
+    const el = document.getElementById("chat-scroll");
+    if (el && stuckToBottom) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [messages, streaming, stuckToBottom]);
+
+  useEffect(() => {
+    const el = document.getElementById("chat-scroll");
+    if (!el) {
+      return;
+    }
+    function onScroll() {
+      setStuckToBottom(el!.scrollHeight - el!.scrollTop - el!.clientHeight < 120);
+    }
+    el.addEventListener("scroll", onScroll);
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  function scrollToBottom() {
+    const el = document.getElementById("chat-scroll");
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+      setStuckToBottom(true);
+    }
+  }
   const caps = activeProviderId
     ? (modelsByProvider[activeProviderId] ?? []).find((m) => m.remote_model_id === activeModelId)?.capabilities ?? null
     : null;
@@ -121,10 +170,37 @@ export function ChatView() {
   }
 
   async function send() {
-    setError(null);
-    if (!canSend || !activeProviderId || !activeModelId) return;
     const text = draft.trim();
-    historyRef.current.push(text);
+    if (!text || !canSend) {
+      return;
+    }
+    await sendText(text);
+  }
+
+  /**
+   * Send an explicit text, bypassing the composer draft.
+   * Retry uses this so it resends the last user message instead of the
+   * (already cleared) draft — previously Retry only cleared the error.
+   */
+  async function sendText(text : string) {
+    setError(null);
+    if (!activeProviderId || !activeModelId || streaming || reasoningBlocked) {
+      return;
+    }
+    // Never send under a placeholder id: without a real conversation row the
+    // backend message insert would fail its foreign key. Auto-create instead.
+    let conversationId = useProviderStore.getState().activeConversationId;
+    if (!conversationId) {
+      try {
+        conversationId = await useProviderStore.getState().newConversation("New conversation");
+      } catch (e) {
+        setError(formatIpcError(e));
+        return;
+      }
+    }
+    if (historyRef.current[historyRef.current.length - 1] !== text) {
+      historyRef.current.push(text);
+    }
     historyIdx.current = historyRef.current.length;
     setDraft("");
 
@@ -148,7 +224,7 @@ export function ChatView() {
     try {
       const streamId = await invoke<string>("stream_chat_cmd", {
         input : {
-          conversation_id : useProviderStore.getState().activeConversationId ?? "local",
+          conversation_id : conversationId,
           provider_id : activeProviderId,
           model : activeModelId,
           messages : history.map((m) => ({ role : m.role, content : m.content })),
@@ -168,6 +244,19 @@ export function ChatView() {
     }
   }
 
+  /**
+   * Resend the last user message. Used by the Retry button: the composer
+   * draft is already cleared at this point, so reusing it would no-op.
+   */
+  async function retry() {
+    const msgs = useProviderStore.getState().messages;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === "user") {
+        await sendText(msgs[i].content);
+        return;
+      }
+    }
+  }
   async function stop() {
     if (activeStream) {
       await invoke("cancel_stream", { streamId : activeStream }).catch(() => undefined);
@@ -187,7 +276,7 @@ export function ChatView() {
   }
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <section className="relative rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <MessageList />
       {reasoningBlocked && (
         <p className="mt-2 text-sm text-red-600 dark:text-red-400">
@@ -195,9 +284,12 @@ export function ChatView() {
         </p>
       )}
       {error && (
-        <p className="mt-2 text-sm text-red-600 dark:text-red-400">
-          {error} <button onClick={() => void send()} className="ml-2 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">Retry</button>
-        </p>
+        <div className="mt-2 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300">
+          <p className="min-w-0 flex-1">
+            {error} <button onClick={() => void retry()} className="ml-2 rounded-lg border border-red-300 px-2 py-0.5 font-medium transition-colors hover:bg-red-100 dark:border-red-700 dark:hover:bg-red-900">Retry</button>
+          </p>
+          <button onClick={() => setError(null)} title="Dismiss" className="rounded px-1.5 hover:bg-red-100 dark:hover:bg-red-900">×</button>
+        </div>
       )}
       {!canSend && sendBlockers.length > 0 && (
         <ul className="mb-0 mt-2 list-disc pl-5 text-sm text-amber-700 dark:text-amber-400">
@@ -220,6 +312,15 @@ export function ChatView() {
           : <button onClick={() => void send()} disabled={!canSend} className="rounded-lg bg-brand-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-brand-500 dark:hover:bg-brand-600">Send</button>}
       </div>
       {lastDiagnostics && <Inspector {...lastDiagnostics} />}
+      {!stuckToBottom && messages.length > 0 && (
+        <button
+          onClick={scrollToBottom}
+          title="Jump to latest"
+          className="absolute bottom-24 left-1/2 -translate-x-1/2 rounded-full border border-slate-200 bg-white px-3 py-1 text-sm shadow-md transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
+        >
+          ↓ Latest
+        </button>
+      )}
     </section>
   );
 }

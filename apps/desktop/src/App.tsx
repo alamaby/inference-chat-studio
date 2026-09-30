@@ -61,7 +61,7 @@ export function App() {
           <SettingsSimple />
           <ConversationList />
         </aside>
-        <main className="min-w-0 flex-1 overflow-y-auto">
+        <main id="chat-scroll" className="min-w-0 flex-1 overflow-y-auto">
           <ChatView />
         </main>
       </div>

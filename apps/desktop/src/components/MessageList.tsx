@@ -1,6 +1,50 @@
+import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
+import "highlight.js/styles/github-dark.css";
 import { useProviderStore } from "../stores/providerStore";
+import { highlightCode, parseCodeLanguage } from "../lib/codeblock";
 import { btn, code, hintText } from "../lib/ui";
+
+function CodeBlock({ children } : { children? : React.ReactNode }) {
+  const [copied, setCopied] = useState(false);
+  let language: string | null = null;
+  let source = "";
+  React.Children.forEach(children, (child) => {
+    if (React.isValidElement(child) && child.type === "code") {
+      const props = child.props as { className? : string; children? : React.ReactNode };
+      language = parseCodeLanguage(props.className);
+      source = String(props.children ?? "");
+    }
+  });
+  const { html, language : lang } = highlightCode(source, language);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(source.replace(/\n$/, ""));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard unavailable in some WebView contexts; ignore.
+    }
+  }
+
+  return (
+    <figure className="overflow-hidden rounded-lg border border-slate-700">
+      <figcaption className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 text-xs text-slate-300">
+        <span className="font-mono">{lang}</span>
+        <button onClick={() => void copy()} className="ml-auto rounded px-2 py-0.5 transition-colors hover:bg-slate-700">
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </figcaption>
+      <pre className="overflow-auto bg-slate-900 p-3 text-[13px] leading-relaxed">
+        <code
+          className={`hljs language-${lang}`}
+          dangerouslySetInnerHTML={{ __html : html }}
+        />
+      </pre>
+    </figure>
+  );
+}
 
 export function MessageList() {
   const messages = useProviderStore((s) => s.messages);
@@ -41,8 +85,11 @@ export function MessageList() {
             </button>
           </header>
           <div className="prose-sm max-w-none dark:prose-invert">
-            <ReactMarkdown>{m.content}</ReactMarkdown>
+            <ReactMarkdown components={{ pre : CodeBlock }}>{m.content}</ReactMarkdown>
           </div>
+          {m.status === "streaming" && (
+            <span aria-label="generating" className="streaming-caret text-brand-600 dark:text-brand-100">▍</span>
+          )}
         </article>
       ))}
     </div>

@@ -673,6 +673,14 @@ pub async fn delete_conversation(
     Ok(state.db.delete_conversation(&id)?)
 }
 
+#[tauri::command]
+pub async fn list_messages_cmd(
+    state: State<'_, AppState>,
+    conversation_id: String,
+) -> Result<Vec<MessageRow>, IpcError> {
+    Ok(state.db.list_messages_by_conversation(&conversation_id)?)
+}
+
 // ---------------------------------------------------------------------------
 // Chat commands
 // ---------------------------------------------------------------------------

@@ -2,20 +2,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { create } from "zustand";
 import { formatIpcError } from "../lib/errors";
 import { resolveSelection } from "../lib/selection";
+import { toChatMsg, type ChatMsg, type PersistedMessage } from "../lib/conversation";
 import type {
   ConnectionStatus,
   ModelInfo,
   ProviderDto,
   ReasoningLevel
 } from "../../../../packages/api-types/src/index";
-
-interface ChatMsg {
-  role : string;
-  content : string;
-  model? : string;
-  providerId? : string;
-  status? : string;
-}
 
 interface ConversationDto {
   id : string;
@@ -58,11 +51,13 @@ interface ProviderState {
   setMessages : (msgs : ChatMsg[]) => void;
   setStreaming : (v : boolean) => void;
   loadConversations : () => Promise<void>;
-  newConversation : (title : string) => Promise<void>;
+  newConversation : (title : string) => Promise<string>;
+  selectConversation : (id : string) => Promise<void>;
   renameConversation : (id : string, title : string) => Promise<void>;
   deleteConversation : (id : string) => Promise<void>;
   setConversationSearch : (q : string) => void;
   setConversationFilters : (providerId : string | null, modelId : string | null) => void;
+  clearProviderError : (id : string) => void;
 }
 
 export const useProviderStore = create<ProviderState>((set, get) => ({
@@ -191,10 +186,23 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
   setStreaming : (v) => set({ streaming : v }),
   loadConversations : async () => {
     const conversations = await invoke<ConversationDto[]>("list_conversations");
-    set((s) => ({
-      conversations,
-      activeConversationId : s.activeConversationId ?? conversations[0]?.id ?? null
-    }));
+    const current = get();
+    // Default: continue the most recent conversation (backend orders by
+    // updated_at DESC) instead of opening an empty view. Creating via New
+    // is the explicit way to start fresh.
+    const activeId = current.activeConversationId ?? conversations[0]?.id ?? null;
+    let messages = current.messages;
+    if (activeId && activeId !== current.activeConversationId) {
+      try {
+        const rows = await invoke<PersistedMessage[]>("list_messages_cmd", {
+          conversation_id : activeId
+        });
+        messages = rows.map(toChatMsg);
+      } catch {
+        // keep current messages; the error surfaces on next send/select.
+      }
+    }
+    set({ conversations, activeConversationId : activeId, messages });
   },
   newConversation : async (title : string) => {
     const { activeProviderId, activeModelId, systemPrompt } = get();
@@ -209,6 +217,17 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
       activeConversationId : row.id,
       messages : []
     }));
+    return row.id;
+  },
+  selectConversation : async (id : string) => {
+    const rows = await invoke<PersistedMessage[]>("list_messages_cmd", {
+      conversation_id : id
+    });
+    set({
+      activeConversationId : id,
+      messages : rows.map(toChatMsg),
+      error : null
+    });
   },
   renameConversation : async (id : string, title : string) => {
     await invoke("rename_conversation", { id, title });
@@ -233,5 +252,10 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
   setConversationFilters : (providerId, modelId) => set({
     conversationFilterProvider : providerId,
     conversationFilterModel : modelId
+  }),
+  clearProviderError : (id : string) => set((s) => {
+    const testErrorByProvider = { ...s.testErrorByProvider };
+    delete testErrorByProvider[id];
+    return { testErrorByProvider };
   })
 }));

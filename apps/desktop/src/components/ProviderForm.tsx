@@ -12,7 +12,8 @@ import {
   input,
   label,
   sectionTitle,
-  statusDot
+  statusDot,
+  statusPill
 } from "../lib/ui";
 
 export function ProviderForm() {
@@ -20,6 +21,7 @@ export function ProviderForm() {
     loadProviders,
     testConnection,
     deleteProvider,
+    clearProviderError,
     statusByProvider,
     testingByProvider,
     testErrorByProvider
@@ -109,8 +111,11 @@ export function ProviderForm() {
               <span className="font-medium">{p.name}</span>
             </div>
             <code className={`${code} mt-1 block truncate`}>{p.base_url}</code>
-            <div className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-              {statusLabel(statusByProvider[p.id] ?? "not_tested")}
+            <div className="mt-1.5">
+              <span className={statusPill(statusByProvider[p.id] ?? "not_tested")}>
+                <span className={statusDot(statusByProvider[p.id] ?? "not_tested")} />
+                {statusLabel(statusByProvider[p.id] ?? "not_tested")}
+              </span>
             </div>
             <div className="mt-1.5 flex gap-2">
               <button
@@ -130,7 +135,10 @@ export function ProviderForm() {
               </button>
             </div>
             {testErrorByProvider[p.id] && (
-              <p className={`${errorText} mt-1`}>{testErrorByProvider[p.id]}</p>
+              <div className="mt-1 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300">
+                <p className="min-w-0 flex-1">{testErrorByProvider[p.id]}</p>
+                <button onClick={() => clearProviderError(p.id)} title="Dismiss" className="rounded px-1 hover:bg-red-100 dark:hover:bg-red-900">×</button>
+              </div>
             )}
           </li>
         ))}

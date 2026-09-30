@@ -12,6 +12,7 @@ export function ConversationList() {
     providers,
     loadConversations,
     newConversation,
+    selectConversation,
     renameConversation,
     deleteConversation,
     setConversationSearch,
@@ -95,7 +96,13 @@ export function ConversationList() {
               </span>
             ) : (
               <span className="flex items-center gap-2">
-                <span className="min-w-0 flex-1 truncate">{c.title}</span>
+                <button
+                  onClick={() => void selectConversation(c.id)}
+                  title="Open conversation"
+                  className="min-w-0 flex-1 truncate text-left hover:underline"
+                >
+                  {c.title}
+                </button>
                 <button onClick={() => { setRenamingId(c.id); setRenameValue(c.title); }} className={btn}>Rename</button>
                 <button onClick={() => void deleteConversation(c.id)} className={btn}>Delete</button>
               </span>
