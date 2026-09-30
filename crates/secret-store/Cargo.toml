@@ -4,7 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-keyring = "3"
+# `windows-native` is REQUIRED on Windows: without it keyring silently falls
+# back to an in-memory mock store (set succeeds, nothing persists, get finds
+# nothing). See mock-vs-native backend selection in keyring's lib.rs.
+keyring = { version = "3", features = ["windows-native"] }
 thiserror = "2"
 
 [features]

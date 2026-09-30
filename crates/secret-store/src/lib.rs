@@ -188,4 +188,27 @@ mod tests {
             "keyring:provider:p1:api_key"
         );
     }
+
+    #[test]
+    fn windows_store_roundtrip_smoke() {
+        // Diagnostic regression test: touches the REAL Windows Credential
+        // Manager with a throwaway key and cleans up afterwards.
+        let store = WindowsCredentialStore;
+        let key = format!(
+            "smoke-test-{}-{}:api_key",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_millis()
+        );
+        let _ = store.delete(&key);
+        store.set(&key, "smoke-secret").expect("set");
+        assert_eq!(
+            store.get(&key).expect("get"),
+            Some("smoke-secret".to_string())
+        );
+        store.delete(&key).expect("delete");
+        assert_eq!(store.get(&key).expect("get after delete"), None);
+    }
 }
