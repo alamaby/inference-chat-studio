@@ -6,6 +6,7 @@ import type { ChatDoneEvent, ChatErrorEvent } from "../../../../packages/api-typ
 import { useProviderStore } from "../stores/providerStore";
 import { availableReasoningOptions } from "../lib/reasoning";
 import { MessageList } from "./MessageList";
+import { BookmarkRail } from "./BookmarkRail";
 import { Inspector, type InspectorProps } from "./Inspector";
 
 export function ChatView() {
@@ -50,6 +51,7 @@ export function ChatView() {
       setMessages([
         ...useProviderStore.getState().messages.filter((m) => m.status !== "streaming"),
         {
+          id : done.message_id,
           role : "assistant",
           content : done.text,
           model : done.model,
@@ -214,6 +216,9 @@ export function ChatView() {
     }
     historyIdx.current = historyRef.current.length;
     setDraft("");
+    // Persist UI settings with the conversation (best effort: a settings
+    // failure must never block the send itself).
+    await useProviderStore.getState().saveConversationSettings(conversationId).catch(() => undefined);
 
     let customJson: unknown = null;
     if (reasoningLevel === "Custom") {
@@ -288,7 +293,12 @@ export function ChatView() {
 
   return (
     <section className="relative rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <MessageList />
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <MessageList />
+        </div>
+        <BookmarkRail />
+      </div>
       {reasoningBlocked && (
         <p className="mt-2 text-sm text-red-600 dark:text-red-400">
           Reasoning effort is not supported by this model — switch to Automatic/None or pick another model.

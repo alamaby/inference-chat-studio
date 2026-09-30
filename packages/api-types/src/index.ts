@@ -116,3 +116,12 @@ export interface ChatErrorEvent {
   request_url? : string | null;
   request_body? : unknown;
 }
+
+export interface BookmarkDto {
+  id : string;
+  conversation_id : string;
+  message_id : string;
+  label : string;
+  anchor_text : string;
+  created_at : string;
+}

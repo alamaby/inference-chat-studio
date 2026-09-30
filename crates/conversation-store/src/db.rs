@@ -4,7 +4,8 @@ use std::path::Path;
 use std::sync::Mutex;
 
 const INIT_SQL: &str = include_str!("../migrations/0001_init.sql");
-const SCHEMA_VERSION: i64 = 1;
+const BOOKMARKS_SQL: &str = include_str!("../migrations/0002_bookmarks.sql");
+const SCHEMA_VERSION: i64 = 2;
 
 #[derive(Debug)]
 pub enum StoreError {
@@ -100,6 +101,16 @@ pub struct MessageRow {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BookmarkRow {
+    pub id: String,
+    pub conversation_id: String,
+    pub message_id: String,
+    pub label: String,
+    pub anchor_text: String,
+    pub created_at: String,
+}
+
 pub struct Db {
     conn: Mutex<Connection>,
 }
@@ -132,10 +143,17 @@ impl Db {
 
     pub fn migrate(&self) -> Result<()> {
         let conn = self.conn.lock().expect("db mutex poisoned");
-        let version: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version < SCHEMA_VERSION {
-            conn.execute_batch(INIT_SQL)?;
-            conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+        let mut version: i64 =
+            conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+        // Incremental: fresh DBs apply every step, existing DBs only the new ones.
+        while version < SCHEMA_VERSION {
+            match version {
+                0 => conn.execute_batch(INIT_SQL)?,
+                1 => conn.execute_batch(BOOKMARKS_SQL)?,
+                _ => break,
+            }
+            version += 1;
+            conn.pragma_update(None, "user_version", version)?;
         }
         Ok(())
     }
@@ -298,6 +316,25 @@ impl Db {
         Ok(())
     }
 
+    /// Persist per-conversation settings (system prompt, reasoning, sampling,
+    /// default model). Called by the frontend on send and on conversation
+    /// switch so UI state survives restarts.
+    pub fn update_conversation_settings(
+        &self,
+        id: &str,
+        system_prompt: Option<&str>,
+        settings_json: Option<&str>,
+        default_model_id: Option<&str>,
+        updated_at: &str,
+    ) -> Result<()> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        conn.execute(
+            "UPDATE conversations SET system_prompt = ?1, settings_json = ?2, default_model_id = ?3, updated_at = ?4 WHERE id = ?5",
+            params![system_prompt, settings_json, default_model_id, updated_at, id],
+        )?;
+        Ok(())
+    }
+
     /// Detach conversations from a provider before the provider row is
     /// deleted. `conversations.provider_id` has no `ON DELETE` action, so
     /// deleting a referenced provider would otherwise fail with an FK error.
@@ -345,6 +382,52 @@ impl Db {
             .query_map(params![conversation_id], map_message_row)?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(rows)
+    }
+
+    pub fn insert_bookmark(&self, row: &BookmarkRow) -> Result<()> {
+        if row.label.trim().is_empty() {
+            return Err(StoreError::Validation(
+                "bookmark label must not be empty".to_string(),
+            ));
+        }
+        if row.anchor_text.trim().is_empty() {
+            return Err(StoreError::Validation(
+                "bookmark anchor_text must not be empty".to_string(),
+            ));
+        }
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        conn.execute(
+            "INSERT INTO bookmarks(id, conversation_id, message_id, label, anchor_text, created_at) VALUES(?1,?2,?3,?4,?5,?6)",
+            params![
+                row.id,
+                row.conversation_id,
+                row.message_id,
+                row.label,
+                row.anchor_text,
+                row.created_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_bookmarks_by_conversation(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Vec<BookmarkRow>> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT id, conversation_id, message_id, label, anchor_text, created_at FROM bookmarks WHERE conversation_id = ?1 ORDER BY created_at ASC",
+        )?;
+        let rows = stmt
+            .query_map(params![conversation_id], map_bookmark_row)?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn delete_bookmark(&self, id: &str) -> Result<()> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        conn.execute("DELETE FROM bookmarks WHERE id = ?1", params![id])?;
+        Ok(())
     }
 
     pub fn schema_version(&self) -> Result<i64> {
@@ -432,5 +515,16 @@ fn map_message_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MessageRow> {
         finish_reason: row.get(12)?,
         status: row.get(13)?,
         created_at: row.get(14)?,
+    })
+}
+
+fn map_bookmark_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<BookmarkRow> {
+    Ok(BookmarkRow {
+        id: row.get(0)?,
+        conversation_id: row.get(1)?,
+        message_id: row.get(2)?,
+        label: row.get(3)?,
+        anchor_text: row.get(4)?,
+        created_at: row.get(5)?,
     })
 }

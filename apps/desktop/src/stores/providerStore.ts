@@ -2,8 +2,15 @@ import { invoke } from "@tauri-apps/api/core";
 import { create } from "zustand";
 import { formatIpcError } from "../lib/errors";
 import { resolveSelection } from "../lib/selection";
-import { toChatMsg, type ChatMsg, type PersistedMessage } from "../lib/conversation";
+import {
+  parseConversationSettings,
+  serializeConversationSettings,
+  toChatMsg,
+  type ChatMsg,
+  type PersistedMessage
+} from "../lib/conversation";
 import type {
+  BookmarkDto,
   ConnectionStatus,
   ModelInfo,
   ProviderDto,
@@ -15,6 +22,8 @@ interface ConversationDto {
   title : string;
   provider_id? : string | null;
   default_model_id? : string | null;
+  system_prompt? : string | null;
+  settings_json? : string | null;
 }
 
 interface ProviderState {
@@ -36,6 +45,7 @@ interface ProviderState {
   conversationFilterProvider : string | null;
   conversationFilterModel : string | null;
   messages : ChatMsg[];
+  bookmarks : BookmarkDto[];
   streaming : boolean;
   error : string | null;
 
@@ -53,11 +63,40 @@ interface ProviderState {
   loadConversations : () => Promise<void>;
   newConversation : (title : string) => Promise<string>;
   selectConversation : (id : string) => Promise<void>;
+  saveConversationSettings : (id : string) => Promise<void>;
+  loadBookmarks : (conversationId : string) => Promise<void>;
+  createBookmark : (messageId : string, label : string, anchorText : string) => Promise<void>;
+  deleteBookmark : (id : string) => Promise<void>;
   renameConversation : (id : string, title : string) => Promise<void>;
   deleteConversation : (id : string) => Promise<void>;
   setConversationSearch : (q : string) => void;
   setConversationFilters : (providerId : string | null, modelId : string | null) => void;
   clearProviderError : (id : string) => void;
+}
+
+/**
+ * Build the state patch that restores a conversation's saved UI state
+ * (provider/model selection, system prompt, reasoning, sampling).
+ * Invalid or missing values fall back without touching anything else.
+ */
+function conversationPatch(
+  s : ProviderState,
+  row : ConversationDto
+): Partial<ProviderState> {
+  const settings = parseConversationSettings(row.settings_json);
+  return {
+    systemPrompt : row.system_prompt ?? "",
+    reasoningLevel : settings.reasoningLevel,
+    customReasoningJson : settings.reasoningCustomJson,
+    temperature : settings.temperature,
+    maxOutput : settings.maxOutput,
+    ...resolveSelection(
+      s.providers,
+      s.modelsByProvider,
+      row.provider_id ?? s.activeProviderId,
+      row.default_model_id ?? s.activeModelId
+    )
+  };
 }
 
 export const useProviderStore = create<ProviderState>((set, get) => ({
@@ -79,6 +118,7 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
   conversationFilterProvider : null,
   conversationFilterModel : null,
   messages : [],
+  bookmarks : [],
   streaming : false,
   error : null,
 
@@ -192,41 +232,100 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
     // is the explicit way to start fresh.
     const activeId = current.activeConversationId ?? conversations[0]?.id ?? null;
     let messages = current.messages;
+    let bookmarks = current.bookmarks;
+    let patch: Partial<ProviderState> = {};
     if (activeId && activeId !== current.activeConversationId) {
+      const active = conversations.find((c) => c.id === activeId);
+      if (active) {
+        patch = conversationPatch(current, active);
+      }
       try {
         const rows = await invoke<PersistedMessage[]>("list_messages_cmd", {
-          conversation_id : activeId
+          conversationId : activeId
         });
         messages = rows.map(toChatMsg);
       } catch {
         // keep current messages; the error surfaces on next send/select.
       }
+      try {
+        bookmarks = await invoke<BookmarkDto[]>("list_bookmarks_cmd", {
+          conversationId : activeId
+        });
+      } catch {
+        bookmarks = [];
+      }
     }
-    set({ conversations, activeConversationId : activeId, messages });
+    set({ conversations, activeConversationId : activeId, messages, bookmarks, ...patch });
   },
   newConversation : async (title : string) => {
     const { activeProviderId, activeModelId, systemPrompt } = get();
     const row = await invoke<ConversationDto>("create_conversation", {
       title,
-      provider_id : activeProviderId,
-      default_model_id : activeModelId,
-      system_prompt : systemPrompt || null
+      providerId : activeProviderId,
+      defaultModelId : activeModelId,
+      systemPrompt : systemPrompt || null
     });
     set((s) => ({
       conversations : [row, ...s.conversations],
       activeConversationId : row.id,
-      messages : []
+      messages : [],
+      bookmarks : []
     }));
     return row.id;
   },
   selectConversation : async (id : string) => {
     const rows = await invoke<PersistedMessage[]>("list_messages_cmd", {
-      conversation_id : id
+      conversationId : id
     });
-    set({
-      activeConversationId : id,
-      messages : rows.map(toChatMsg),
-      error : null
+    const bookmarks = await invoke<BookmarkDto[]>("list_bookmarks_cmd", {
+      conversationId : id
+    }).catch(() : BookmarkDto[] => []);
+    set((s) => {
+      const row = s.conversations.find((c) => c.id === id);
+      return {
+        activeConversationId : id,
+        messages : rows.map(toChatMsg),
+        bookmarks,
+        error : null,
+        ...(row ? conversationPatch(s, row) : {})
+      };
+    });
+  },
+  loadBookmarks : async (conversationId : string) => {
+    const bookmarks = await invoke<BookmarkDto[]>("list_bookmarks_cmd", {
+      conversationId
+    });
+    set({ bookmarks });
+  },
+  createBookmark : async (messageId : string, label : string, anchorText : string) => {
+    const { activeConversationId } = get();
+    if (!activeConversationId) {
+      return;
+    }
+    const row = await invoke<BookmarkDto>("create_bookmark", {
+      conversationId : activeConversationId,
+      messageId,
+      label,
+      anchorText
+    });
+    set((s) => ({ bookmarks : [...s.bookmarks, row] }));
+  },
+  deleteBookmark : async (id : string) => {
+    await invoke("delete_bookmark", { id });
+    set((s) => ({ bookmarks : s.bookmarks.filter((b) => b.id !== id) }));
+  },
+  saveConversationSettings : async (id : string) => {
+    const s = get();
+    await invoke("update_conversation_settings", {
+      id,
+      systemPrompt : s.systemPrompt || null,
+      settingsJson : serializeConversationSettings({
+        reasoningLevel : s.reasoningLevel,
+        reasoningCustomJson : s.customReasoningJson,
+        temperature : s.temperature,
+        maxOutput : s.maxOutput
+      }),
+      defaultModelId : s.activeModelId
     });
   },
   renameConversation : async (id : string, title : string) => {
@@ -239,14 +338,22 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
     await invoke("delete_conversation", { id });
     set((s) => {
       const conversations = s.conversations.filter((c) => c.id !== id);
+      const switched = s.activeConversationId === id;
       return {
         conversations,
-        activeConversationId : s.activeConversationId === id
+        activeConversationId : switched
           ? (conversations[0]?.id ?? null)
           : s.activeConversationId,
-        messages : s.activeConversationId === id ? [] : s.messages
+        messages : switched ? [] : s.messages,
+        bookmarks : switched ? [] : s.bookmarks
       };
     });
+    // Reload the newly active conversation's content (bookmarks cascade-
+    // deleted with their conversation in the backend).
+    const next = get().activeConversationId;
+    if (next) {
+      await get().selectConversation(next).catch(() => undefined);
+    }
   },
   setConversationSearch : (q : string) => set({ conversationSearch : q }),
   setConversationFilters : (providerId, modelId) => set({

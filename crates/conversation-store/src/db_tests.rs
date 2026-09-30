@@ -103,12 +103,13 @@ fn conversation_messages_ordered_by_created_at() {
 fn migrate_is_idempotent_and_indexes_exist() {
     let db = Db::connect_in_memory().expect("connect");
     db.migrate().expect("migrate twice");
-    assert_eq!(db.schema_version().expect("version"), 1);
+    assert_eq!(db.schema_version().expect("version"), 2);
     let mut indexes = db.index_names().expect("indexes");
     indexes.sort();
     assert_eq!(
         indexes,
         vec![
+            "idx_bookmarks_conv".to_string(),
             "idx_conv_updated".to_string(),
             "idx_messages_conv_created".to_string(),
             "idx_models_provider".to_string(),
@@ -161,6 +162,76 @@ fn conversation_list_rename_delete() {
     let list = db.list_conversations().expect("list after delete");
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].id, "c2");
+}
+
+fn bookmark_row(id: &str, conversation_id: &str, message_id: &str) -> super::db::BookmarkRow {
+    super::db::BookmarkRow {
+        id: id.to_string(),
+        conversation_id: conversation_id.to_string(),
+        message_id: message_id.to_string(),
+        label: "anchor label here....".to_string(),
+        anchor_text: "anchor label here and more".to_string(),
+        created_at: "2026-09-28T00:05:00Z".to_string(),
+    }
+}
+
+#[test]
+fn bookmark_insert_list_delete_and_cascade() {
+    let db = Db::connect_in_memory().expect("connect");
+    db.insert_conversation(&conversation_row("c1", "t", "2026-09-28T00:01:00Z"))
+        .expect("insert conversation");
+    db.insert_bookmark(&bookmark_row("b1", "c1", "m1"))
+        .expect("insert b1");
+    db.insert_bookmark(&bookmark_row("b2", "c1", "m2"))
+        .expect("insert b2");
+    let marks = db.list_bookmarks_by_conversation("c1").expect("list");
+    assert_eq!(marks.len(), 2);
+    assert_eq!(marks[0].id, "b1");
+    assert_eq!(marks[0].label, "anchor label here....");
+
+    db.delete_bookmark("b1").expect("delete");
+    let marks = db.list_bookmarks_by_conversation("c1").expect("list after delete");
+    assert_eq!(marks.len(), 1);
+
+    // Deleting the conversation cascades to its bookmarks.
+    db.delete_conversation("c1").expect("delete conversation");
+    let marks = db.list_bookmarks_by_conversation("c1").expect("list after cascade");
+    assert!(marks.is_empty());
+}
+
+#[test]
+fn bookmark_rejects_empty_label_and_anchor() {
+    let db = Db::connect_in_memory().expect("connect");
+    let mut row = bookmark_row("b9", "c9", "m9");
+    row.label = "  ".to_string();
+    db.insert_bookmark(&row).expect_err("empty label must fail");
+    row.label = "ok".to_string();
+    row.anchor_text = String::new();
+    db.insert_bookmark(&row).expect_err("empty anchor must fail");
+}
+
+#[test]
+fn conversation_settings_roundtrip() {
+    let db = Db::connect_in_memory().expect("connect");
+    db.insert_conversation(&conversation_row("c1", "t", "2026-09-28T00:01:00Z"))
+        .expect("insert");
+    db.update_conversation_settings(
+        "c1",
+        Some("sys"),
+        Some(r#"{"reasoning_level":"High"}"#),
+        Some("m1"),
+        "2026-09-28T00:02:00Z",
+    )
+    .expect("update settings");
+    let list = db.list_conversations().expect("list");
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].system_prompt.as_deref(), Some("sys"));
+    assert_eq!(
+        list[0].settings_json.as_deref(),
+        Some(r#"{"reasoning_level":"High"}"#)
+    );
+    assert_eq!(list[0].default_model_id.as_deref(), Some("m1"));
+    assert_eq!(list[0].updated_at, "2026-09-28T00:02:00Z");
 }
 
 #[test]

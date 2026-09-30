@@ -12,7 +12,7 @@ use std::time::Instant;
 
 use chrono::Utc;
 use conversation_store::{
-    ConversationRow, Db, MessageRow, ModelRow, ProviderRow, StoreError,
+    BookmarkRow, ConversationRow, Db, MessageRow, ModelRow, ProviderRow, StoreError,
 };
 use provider_core::{
     ChatMessage, ConnectionStatus, ModelCapabilities, ModelInfo, NormalizedChatRequest,
@@ -674,11 +674,64 @@ pub async fn delete_conversation(
 }
 
 #[tauri::command]
+pub async fn update_conversation_settings(
+    state: State<'_, AppState>,
+    id: String,
+    system_prompt: Option<String>,
+    settings_json: Option<String>,
+    default_model_id: Option<String>,
+) -> Result<(), IpcError> {
+    Ok(state.db.update_conversation_settings(
+        &id,
+        system_prompt.as_deref(),
+        settings_json.as_deref(),
+        default_model_id.as_deref(),
+        &now_rfc3339(),
+    )?)
+}
+
+#[tauri::command]
 pub async fn list_messages_cmd(
     state: State<'_, AppState>,
     conversation_id: String,
 ) -> Result<Vec<MessageRow>, IpcError> {
     Ok(state.db.list_messages_by_conversation(&conversation_id)?)
+}
+
+#[tauri::command]
+pub async fn create_bookmark(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    message_id: String,
+    label: String,
+    anchor_text: String,
+) -> Result<BookmarkRow, IpcError> {
+    let row = BookmarkRow {
+        id: uuid::Uuid::new_v4().to_string(),
+        conversation_id,
+        message_id,
+        label,
+        anchor_text,
+        created_at: now_rfc3339(),
+    };
+    state.db.insert_bookmark(&row)?;
+    Ok(row)
+}
+
+#[tauri::command]
+pub async fn list_bookmarks_cmd(
+    state: State<'_, AppState>,
+    conversation_id: String,
+) -> Result<Vec<BookmarkRow>, IpcError> {
+    Ok(state.db.list_bookmarks_by_conversation(&conversation_id)?)
+}
+
+#[tauri::command]
+pub async fn delete_bookmark(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), IpcError> {
+    Ok(state.db.delete_bookmark(&id)?)
 }
 
 // ---------------------------------------------------------------------------

@@ -6,13 +6,17 @@ mod ipc;
 
 use std::sync::Arc;
 
-fn main() {
-    let db_path = default_db_path();
-    let db = conversation_store::Db::connect(&db_path).expect("failed to open local database");
-    let state = ipc::AppState::with_db(Arc::new(db));
+use tauri::Manager;
 
+fn main() {
     tauri::Builder::default()
-        .manage(state)
+        .setup(|app| {
+            let db_path = resolve_db_path(app);
+            let db =
+                conversation_store::Db::connect(&db_path).expect("failed to open local database");
+            app.manage(ipc::AppState::with_db(Arc::new(db)));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             ipc::create_provider,
             ipc::list_providers,
@@ -27,7 +31,11 @@ fn main() {
             ipc::list_conversations,
             ipc::rename_conversation,
             ipc::delete_conversation,
+            ipc::update_conversation_settings,
             ipc::list_messages_cmd,
+            ipc::create_bookmark,
+            ipc::list_bookmarks_cmd,
+            ipc::delete_bookmark,
             ipc::stream_chat_cmd,
             ipc::cancel_stream,
             ipc::open_devtools,
@@ -36,6 +44,24 @@ fn main() {
         .expect("failed to run Inference Chat Studio");
 }
 
-fn default_db_path() -> String {
-    std::env::var("INFERENCE_CHAT_STUDIO_DB").unwrap_or_else(|_| "inference-chat-studio.db".to_string())
+/// Single stable database location for every run mode (`tauri dev`,
+/// release binary, installed app).
+///
+/// Previously the path was CWD-relative, so each launch mode silently used a
+/// different database file (history "lost" between runs). Now everything
+/// points at the per-user app-data dir. `INFERENCE_CHAT_STUDIO_DB` still
+/// overrides (tests, portable use). Old per-CWD files are intentionally
+/// orphaned, not migrated, for MVP-0.
+fn resolve_db_path(app: &tauri::App) -> String {
+    if let Ok(path) = std::env::var("INFERENCE_CHAT_STUDIO_DB") {
+        return path;
+    }
+    let dir = app
+        .path()
+        .app_data_dir()
+        .expect("failed to resolve app data dir");
+    std::fs::create_dir_all(&dir).expect("failed to create app data dir");
+    dir.join("inference-chat-studio.db")
+        .to_string_lossy()
+        .to_string()
 }

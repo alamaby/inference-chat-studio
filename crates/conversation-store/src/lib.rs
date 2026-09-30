@@ -3,5 +3,5 @@ mod db;
 mod db_tests;
 
 pub use db::{
-    ConversationRow, Db, MessageRow, ModelRow, ProviderRow, Result, StoreError,
+    BookmarkRow, ConversationRow, Db, MessageRow, ModelRow, ProviderRow, Result, StoreError,
 };
