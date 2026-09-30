@@ -26,4 +26,5 @@ Rust `inference-chat-studio-tauri`: +8 (app_info_semver, export_backup_excludes_
 export_backup_on_empty_db, import_backup_merges_with_new_ids, import_backup_rejects_bad_format,
 import_backup_rejects_unsupported_version, import_backup_skips_dangling_bookmark,
 import_backup_skips_unsupported_provider).
-Vitest: +14 in `src/lib/backup.test.ts` (validateBackupFile, parseBackupJsonText, buildBackupFilename).
+Vitest: +14 in `src/lib/backup.test.ts` (validateBackupFile, parseBackupJsonText, buildBackupFilename);
++3 in `src/stores/providerStore.test.ts` (rotateProviderKey valid / empty key / error propagate).

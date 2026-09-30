@@ -54,6 +54,7 @@ interface ProviderState {
   refreshModels : (providerId : string) => Promise<void>;
   addModelManual : (providerId : string, remoteModelId : string, displayName? : string) => Promise<void>;
   deleteProvider : (id : string) => Promise<void>;
+  rotateProviderKey : (id : string, apiKey : string) => Promise<void>;
   setActive : (providerId : string | null, modelId : string | null) => void;
   setReasoning : (level : ReasoningLevel, customJson : string) => void;
   setSimple : (patch : Partial<Pick<ProviderState, "systemPrompt" | "temperature" | "maxOutput">>) => void;
@@ -134,10 +135,25 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
         modelsByProvider[p.id] = [];
       }
     }
+    // Keep the last-known selection alive only when we actually have models
+    // for that provider, otherwise reset to let the dropdown show the
+    // empty-placeholder rather than a stale, now-invalid id. This avoids the
+    // "first open shows empty model" bug when there were no prior selections.
+    const current = get();
+    const resolved = resolveSelection(
+      providers,
+      modelsByProvider,
+      providers.some((p) => p.id === current.activeProviderId)
+        ? current.activeProviderId
+        : providers[0]?.id ?? null,
+      modelsByProvider[providers[0]?.id ?? ""]?.length > 0
+        ? current.activeModelId
+        : null
+    );
     set((s) => ({
       providers,
       modelsByProvider,
-      ...resolveSelection(providers, modelsByProvider, s.activeProviderId, s.activeModelId)
+      ...resolved
     }));
   },
 
@@ -214,6 +230,21 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
         )
       };
     });
+  },
+
+  rotateProviderKey : async (id : string, apiKey : string) => {
+    if (!apiKey) {
+      throw new Error("API key must not be empty.");
+    }
+    const updated = await invoke<ProviderDto>("update_provider", {
+      id,
+      input : { api_key : apiKey }
+    });
+    set((s) => ({
+      providers : s.providers.map((p) => (p.id === id ? updated : p)),
+      statusByProvider : { ...s.statusByProvider, [id] : "not_tested" },
+      testErrorByProvider : { ...s.testErrorByProvider, [id] : null }
+    }));
   },
 
   setActive : (providerId, modelId) => set((s) => ({

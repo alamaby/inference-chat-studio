@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ProviderDto } from "../../../../packages/api-types/src/index";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke : vi.fn() }));
 
@@ -102,5 +103,65 @@ describe("IPC argument shapes", () => {
       anchorText : "hi"
     });
     expect(useProviderStore.getState().bookmarks.map((b) => b.id)).toEqual(["b1"]);
+  });
+});
+
+describe("rotateProviderKey", () => {
+  beforeEach(() => {
+    mockInvoke.mockReset();
+    // A realistic minimal ProviderDto shape for these tests.
+    const p1 : ProviderDto = {
+      id : "p1",
+      name : "Old",
+      compatibility_type : "openai",
+      api_mode : "chat_completions",
+      base_url : "https://old.example.com/v1",
+      enabled : true,
+      created_at : "t",
+      updated_at : "t"
+    };
+    useProviderStore.setState({
+      providers : [p1],
+      modelsByProvider : {},
+      statusByProvider : { p1 : "connected" },
+      testErrorByProvider : { p1 : "boom" },
+      activeProviderId : "p1",
+      activeModelId : null
+    });
+  });
+
+  it("sends id and snake_case api_key, replaces provider, resets status", async () => {
+    const updated : ProviderDto = {
+      ...useProviderStore.getState().providers[0]!,
+      name : "Updated",
+      updated_at : "t2"
+    };
+    mockInvoke.mockResolvedValueOnce(updated);
+    await useProviderStore.getState().rotateProviderKey("p1", "sk-new");
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockInvoke).toHaveBeenLastCalledWith("update_provider", {
+      id : "p1",
+      input : { api_key : "sk-new" }
+    });
+    const providers = useProviderStore.getState().providers;
+    expect(providers[0]!.updated_at).toBe("t2");
+    expect(useProviderStore.getState().statusByProvider["p1"]).toBe("not_tested");
+    expect(useProviderStore.getState().testErrorByProvider["p1"]).toBeNull();
+  });
+
+  it("throws before invoke on empty key", async () => {
+    await expect(
+      useProviderStore.getState().rotateProviderKey("p1", "")
+    ).rejects.toThrow("API key must not be empty.");
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it("propagates backend error without touching the list", async () => {
+    const err = { code : "model_not_found", message : "nope" as unknown as string };
+    mockInvoke.mockRejectedValueOnce(err);
+    await expect(
+      useProviderStore.getState().rotateProviderKey("p1", "sk-new")
+    ).rejects.toEqual(err);
+    expect(useProviderStore.getState().providers[0]!.name).toBe("Old");
   });
 });

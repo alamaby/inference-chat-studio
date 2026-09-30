@@ -26,3 +26,4 @@ MVP-0 Windows implemented per `plans/2026-09-28-inference-chat-studio-mvp0-windo
 ## Recent entries
 - [2026-09-28 MVP-0 Windows implementation](2026-09-28/093000-mvp0-windows-implementation.md)
 - [2026-09-30 About + Export/Import Backup](2026-09-30/211200-about-export-import-backup.md)
+- [2026-09-30 Provider Key Rotate/Replace](2026-09-30/230800-provider-key-rotate.md)
