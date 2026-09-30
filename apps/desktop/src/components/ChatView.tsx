@@ -6,13 +6,14 @@ import type { ChatDoneEvent, ChatErrorEvent } from "../../../../packages/api-typ
 import { useProviderStore } from "../stores/providerStore";
 import { availableReasoningOptions } from "../lib/reasoning";
 import { MessageList } from "./MessageList";
-import { BookmarkRail } from "./BookmarkRail";
 import { Inspector, type InspectorProps } from "./Inspector";
 
 export function ChatView() {
   const {
+    providers,
     activeProviderId,
     activeModelId,
+    setActive,
     reasoningLevel,
     customReasoningJson,
     systemPrompt,
@@ -56,7 +57,8 @@ export function ChatView() {
           content : done.text,
           model : done.model,
           providerId : useProviderStore.getState().activeProviderId ?? undefined,
-          status : "done"
+          status : "done",
+          timestamp : done.created_at
         }
       ]);
       setLastDiagnostics({
@@ -231,10 +233,11 @@ export function ChatView() {
     }
 
     const history = [...messages, { role : "user", content : text }];
+    const sentAt = new Date().toISOString();
     setMessages([
       ...messages,
-      { role : "user", content : text, model : activeModelId, providerId : activeProviderId, status : "done" },
-      { role : "assistant", content : "Waiting for response…", model : activeModelId, providerId : activeProviderId, status : "streaming" }
+      { role : "user", content : text, model : activeModelId, providerId : activeProviderId, status : "done", timestamp : sentAt },
+      { role : "assistant", content : "Waiting for response…", model : activeModelId, providerId : activeProviderId, status : "streaming", timestamp : sentAt }
     ]);
     setStreaming(true);
     try {
@@ -293,12 +296,7 @@ export function ChatView() {
 
   return (
     <section className="relative rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <MessageList />
-        </div>
-        <BookmarkRail />
-      </div>
+      <MessageList />
       {reasoningBlocked && (
         <p className="mt-2 text-sm text-red-600 dark:text-red-400">
           Reasoning effort is not supported by this model — switch to Automatic/None or pick another model.
@@ -320,6 +318,31 @@ export function ChatView() {
         </ul>
       )}
       <div className="mt-3 flex gap-2">
+        <select
+          value={activeProviderId ?? ""}
+          onChange={(e) => setActive(e.target.value || null, null)}
+          title="Active provider"
+          className="max-w-36 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800"
+        >
+          {providers.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+        <select
+          value={activeModelId ?? ""}
+          onChange={(e) => setActive(activeProviderId, e.target.value || null)}
+          title="Active model"
+          className="max-w-56 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800"
+        >
+          <option value="">Select model…</option>
+          {(activeProviderId ? (modelsByProvider[activeProviderId] ?? []) : []).map((m) => (
+            <option key={m.remote_model_id} value={m.remote_model_id}>
+              {m.display_name ?? m.remote_model_id}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="mt-2 flex gap-2">
         <textarea
           ref={composerRef}
           value={draft}

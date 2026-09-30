@@ -41,7 +41,7 @@ describe("IPC argument shapes", () => {
   it("selectConversation requests messages and bookmarks by conversationId", async () => {
     mockInvoke
       .mockResolvedValueOnce([
-        { id : "m1", role : "user", content_json : "\"hi\"", status : "done" }
+        { id : "m1", role : "user", content_json : "\"hi\"", status : "done", created_at : "2026-09-30T10:00:00.000Z" }
       ])
       .mockResolvedValueOnce([]);
     await useProviderStore.getState().selectConversation("c1");
@@ -52,7 +52,7 @@ describe("IPC argument shapes", () => {
       conversationId : "c1"
     });
     expect(useProviderStore.getState().messages).toEqual([
-      { id : "m1", role : "user", content : "hi", status : "done" }
+      { id : "m1", role : "user", content : "hi", status : "done", timestamp : "2026-09-30T10:00:00.000Z" }
     ]);
   });
 

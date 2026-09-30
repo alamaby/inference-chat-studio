@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import "highlight.js/styles/github-dark.css";
 import { useProviderStore } from "../stores/providerStore";
+import { formatMessageTime } from "../lib/conversation";
 import { bookmarkLabel, normalizeAnchor } from "../lib/bookmark";
 import { highlightCode, parseCodeLanguage } from "../lib/codeblock";
 import { btn, code, hintText } from "../lib/ui";
@@ -133,6 +134,11 @@ export function MessageList() {
               {m.role}
             </strong>
             {m.model && <code className={code}>{m.model}</code>}
+            {m.timestamp && (
+              <span className="text-xs text-slate-400" title={m.timestamp}>
+                {formatMessageTime(m.timestamp)}
+              </span>
+            )}
             {m.status && m.status !== "done" && (
               <span className="text-xs text-slate-500">({m.status})</span>
             )}

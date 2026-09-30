@@ -3,15 +3,14 @@ import { useState } from "react";
 import { formatIpcError } from "../lib/errors";
 import { useProviderStore } from "../stores/providerStore";
 import { statusLabel } from "../lib/reasoning";
+import { Collapsible } from "./Collapsible";
 import {
   btn,
   btnPrimary,
-  card,
   code,
   errorText,
   input,
   label,
-  sectionTitle,
   statusDot,
   statusPill
 } from "../lib/ui";
@@ -79,8 +78,7 @@ export function ProviderForm() {
   }
 
   return (
-    <section className={card}>
-      <h3 className={sectionTitle}>Providers</h3>
+    <Collapsible id="providers" title="Providers">
       <div className="grid gap-2.5">
         <label className={label}>
           Provider name
@@ -143,6 +141,6 @@ export function ProviderForm() {
           </li>
         ))}
       </ul>
-    </section>
+    </Collapsible>
   );
 }

@@ -1,7 +1,8 @@
 import { useProviderStore } from "../stores/providerStore";
 import { REASONING_LEVELS } from "../../../../packages/api-types/src/index";
 import { availableReasoningOptions } from "../lib/reasoning";
-import { card, hintText, input, label, sectionTitle, select, textarea } from "../lib/ui";
+import { Collapsible } from "./Collapsible";
+import { hintText, input, label, select, textarea } from "../lib/ui";
 
 export function SettingsSimple() {
   const {
@@ -23,8 +24,7 @@ export function SettingsSimple() {
   void REASONING_LEVELS;
 
   return (
-    <section className={card}>
-      <h3 className={sectionTitle}>Settings (simple)</h3>
+    <Collapsible id="settings" title="Settings (simple)">
       <label className={`${label} mb-2 block`}>
         Reasoning effort{" "}
         {!supported && (
@@ -90,6 +90,6 @@ export function SettingsSimple() {
           <input type="checkbox" checked disabled title="Locked on in MVP-0" className="h-4 w-4 accent-blue-600" />
         </label>
       </div>
-    </section>
+    </Collapsible>
   );
 }

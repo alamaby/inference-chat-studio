@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   decodeContent,
+  formatMessageTime,
   parseConversationSettings,
   serializeConversationSettings,
   toChatMsg
@@ -32,7 +33,8 @@ describe("toChatMsg", () => {
         content_json : JSON.stringify("x"),
         provider_id : "p1",
         model_id : "m1",
-        status : "done"
+        status : "done",
+        created_at : "2026-09-30T10:05:00.000Z"
       })
     ).toEqual({
       id : "msg-1",
@@ -40,8 +42,35 @@ describe("toChatMsg", () => {
       content : "x",
       model : "m1",
       providerId : "p1",
-      status : "done"
+      status : "done",
+      timestamp : "2026-09-30T10:05:00.000Z"
     });
+  });
+});
+
+describe("formatMessageTime", () => {
+  it("renders today as HH:mm", () => {
+    const now = new Date();
+    const iso = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      14,
+      5
+    ).toISOString();
+    // toISOString shifts to UTC; only assert shape, not exact digits.
+    expect(formatMessageTime(iso)).toMatch(/^\d{1,2}[:.]\d{2}/);
+  });
+
+  it("prefixes older dates", () => {
+    const out = formatMessageTime("2020-01-02T03:04:00.000Z");
+    expect(out.length).toBeGreaterThan(5);
+  });
+
+  it("returns empty for missing or invalid input", () => {
+    expect(formatMessageTime(null)).toBe("");
+    expect(formatMessageTime(undefined)).toBe("");
+    expect(formatMessageTime("not-a-date")).toBe("");
   });
 });
 

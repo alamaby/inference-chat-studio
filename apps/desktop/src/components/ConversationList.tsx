@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useProviderStore } from "../stores/providerStore";
-import { btn, btnPrimary, card, hintText, input, sectionTitle, select } from "../lib/ui";
+import { Collapsible } from "./Collapsible";
+import { btn, btnPrimary, hintText, input, select } from "../lib/ui";
 
 export function ConversationList() {
   const {
@@ -44,8 +45,7 @@ export function ConversationList() {
   }
 
   return (
-    <section className={card}>
-      <h3 className={sectionTitle}>Conversations</h3>
+    <Collapsible id="conversations" title="Conversations">
       <div className="mb-2 flex gap-2">
         <input
           placeholder="New conversation title…"
@@ -111,6 +111,6 @@ export function ConversationList() {
         ))}
       </ul>
       {visible.length === 0 && <p className={hintText}>No conversations match.</p>}
-    </section>
+    </Collapsible>
   );
 }

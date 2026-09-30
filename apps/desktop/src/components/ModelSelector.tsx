@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { Collapsible } from "./Collapsible";
 import { useProviderStore } from "../stores/providerStore";
-import { btn, card, hintText, input, label, sectionTitle, select } from "../lib/ui";
+import { btn, hintText, input, label, select } from "../lib/ui";
 
 export function ModelSelector() {
   const {
@@ -45,8 +46,7 @@ export function ModelSelector() {
   }
 
   return (
-    <section className={card}>
-      <h3 className={sectionTitle}>Model</h3>
+    <Collapsible id="model" title="Model">
       <div className="flex flex-wrap gap-2">
         <select
           value={activeProvider?.id ?? ""}
@@ -106,6 +106,6 @@ export function ModelSelector() {
           <button onClick={() => void addManual()} className={`${btn} self-end`}>Add Model Manually</button>
         </div>
       </div>
-    </section>
+    </Collapsible>
   );
 }

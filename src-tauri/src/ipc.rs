@@ -211,6 +211,7 @@ pub struct ChatDoneEvent {
     pub model: String,
     pub request_url: String,
     pub status_code: u16,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -909,6 +910,7 @@ pub async fn stream_chat_cmd(
                         model,
                         request_url: stream.request_url,
                         status_code: stream.status_code,
+                        created_at: now.clone(),
                     },
                 );
             }

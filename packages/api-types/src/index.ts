@@ -106,6 +106,7 @@ export interface ChatDoneEvent {
   model : string;
   request_url : string;
   status_code : number;
+  created_at : string;
 }
 
 export interface ChatErrorEvent {

@@ -32,6 +32,7 @@ export interface PersistedMessage {
   provider_id? : string | null;
   model_id? : string | null;
   status : string;
+  created_at : string;
 }
 
 export interface ChatMsg {
@@ -41,6 +42,8 @@ export interface ChatMsg {
   model? : string;
   providerId? : string;
   status? : string;
+  /** ISO-8601 creation time for the bubble timestamp. */
+  timestamp? : string;
 }
 
 export function toChatMsg(row : PersistedMessage): ChatMsg {
@@ -48,7 +51,8 @@ export function toChatMsg(row : PersistedMessage): ChatMsg {
     id : row.id,
     role : row.role,
     content : decodeContent(row.content_json),
-    status : row.status
+    status : row.status,
+    timestamp : row.created_at
   };
   if (row.model_id) {
     msg.model = row.model_id;
@@ -57,6 +61,31 @@ export function toChatMsg(row : PersistedMessage): ChatMsg {
     msg.providerId = row.provider_id;
   }
   return msg;
+}
+
+/**
+ * Short bubble timestamp: `14:05` today, `30 Sep 14:05` otherwise.
+ * Invalid input renders as empty (never throws, never "Invalid Date").
+ */
+export function formatMessageTime(iso : string | null | undefined): string {
+  if (!iso) {
+    return "";
+  }
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    return "";
+  }
+  const time = d.toLocaleTimeString([], { hour : "2-digit", minute : "2-digit" });
+  const today = new Date();
+  const sameDay =
+    d.getFullYear() === today.getFullYear() &&
+    d.getMonth() === today.getMonth() &&
+    d.getDate() === today.getDate();
+  if (sameDay) {
+    return time;
+  }
+  const date = d.toLocaleDateString([], { day : "numeric", month : "short" });
+  return `${date} ${time}`;
 }
 
 export type ReasoningLevelString =

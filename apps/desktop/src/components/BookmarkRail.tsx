@@ -22,7 +22,7 @@ export function BookmarkRail() {
   }
 
   return (
-    <aside className={`${card} w-60 shrink-0 self-start`}>
+    <aside className={`${card} sticky top-0 max-h-full w-full shrink-0 self-start overflow-y-auto`}>
       <h3 className={sectionTitle}>Bookmarks</h3>
       {bookmarks.length === 0 ? (
         <p className={`${hintText} !text-xs`}>
