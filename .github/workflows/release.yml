@@ -1,0 +1,93 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $ver = $tag -replace '^v', ''
+          "version=$ver" >> $env:GITHUB_OUTPUT
+
+      - name: Sync version in Cargo.toml files
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.version.outputs.version }}"
+          (Get-Content src-tauri/Cargo.toml) -replace 'version = "0\.1\.0"', "version = `"$ver`"" | Set-Content src-tauri/Cargo.toml
+          (Get-Content Cargo.toml) -replace 'version = "0\.1\.0"', "version = `"$ver`"" | Set-Content Cargo.toml
+
+      - name: Sync version in tauri.conf.json
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.version.outputs.version }}"
+          (Get-Content src-tauri/tauri.conf.json) -replace '"version": "0\.1\.0"', "`"version`": `"$ver`"" | Set-Content src-tauri/tauri.conf.json
+
+      - name: Sync version in package.json files
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.version.outputs.version }}"
+          (Get-Content package.json) -replace '"version": "0\.1\.0"', "`"version`": `"$ver`"" | Set-Content package.json
+          (Get-Content apps/desktop/package.json) -replace '"version": "0\.1\.0"', "`"version`": `"$ver`"" | Set-Content apps/desktop/package.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.5
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm --filter inference-chat-studio-desktop typecheck
+
+      - name: Tests
+        run: pnpm --filter inference-chat-studio-desktop test
+
+      - name: Rust tests
+        run: cargo test --workspace
+
+      - name: Clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Build frontend
+        run: pnpm --filter inference-chat-studio-desktop build
+
+      - name: Build Tauri app
+        run: cd src-tauri && cargo tauri build --bundles nsis
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          files: |
+            src-tauri/target/release/bundle/nsis/*.exe
