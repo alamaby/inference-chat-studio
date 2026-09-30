@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useProviderStore } from "./stores/providerStore";
 import { CommandPalette } from "./components/CommandPalette";
 import { ProviderForm } from "./components/ProviderForm";
@@ -8,6 +8,8 @@ import { SettingsSimple } from "./components/SettingsSimple";
 import { ChatView } from "./components/ChatView";
 import { BookmarkRail } from "./components/BookmarkRail";
 import { ConversationList } from "./components/ConversationList";
+import { AboutDialog } from "./components/AboutDialog";
+import { DataBackup } from "./components/DataBackup";
 import { btn, errorText, hintText } from "./lib/ui";
 
 async function openDevtools(): Promise<void> {
@@ -23,6 +25,7 @@ export function App() {
   const loadProviders = useProviderStore((s) => s.loadProviders);
   const loadConversations = useProviderStore((s) => s.loadConversations);
   const error = useProviderStore((s) => s.error);
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   useEffect(() => {
     void loadProviders().catch(() => undefined);
@@ -48,6 +51,13 @@ export function App() {
           <p className={hintText}>Prompt dikirim ke provider; history tersimpan lokal.</p>
         </div>
         <button
+          onClick={() => setAboutOpen(true)}
+          title="Version, build number and build info"
+          className={btn}
+        >
+          About
+        </button>
+        <button
           onClick={() => void openDevtools()}
           title="Open WebView DevTools (or press F12)"
           className={`${btn} ml-auto`}
@@ -62,6 +72,7 @@ export function App() {
           <ModelSelector />
           <SettingsSimple />
           <ConversationList />
+          <DataBackup />
         </aside>
         <main id="chat-scroll" className="min-w-0 flex-1 overflow-y-auto">
           <ChatView />
@@ -70,6 +81,7 @@ export function App() {
           <BookmarkRail />
         </div>
       </div>
+      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
       <CommandPalette />
     </div>
   );

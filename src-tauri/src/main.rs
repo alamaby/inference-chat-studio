@@ -23,6 +23,8 @@ fn main() {
             ipc::update_provider,
             ipc::delete_provider,
             ipc::export_provider,
+            ipc::export_backup,
+            ipc::import_backup,
             ipc::test_connection_cmd,
             ipc::refresh_models,
             ipc::list_models_cmd,
@@ -39,6 +41,7 @@ fn main() {
             ipc::stream_chat_cmd,
             ipc::cancel_stream,
             ipc::open_devtools,
+            ipc::get_app_info,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Inference Chat Studio");

@@ -5,8 +5,8 @@ Format version: 1
 
 ## Current state
 MVP-0 Windows implemented per `plans/2026-09-28-inference-chat-studio-mvp0-windows-plan.md`
-(all 10 steps). Gate green: 30 Rust tests, 6 vitest, typecheck clean,
-clippy clean, NSIS installer built (unsigned, 4.96 MiB). No commits yet
+(all 10 steps). Gate green: 11 Rust tests di `inference-chat-studio-tauri` (3 lama + 8 baru),
+30+ di workspace; 56 vitest (`backup.test.ts` 14 baru). Typecheck bersih. No commits yet
 (branch `main`, untracked files pending).
 
 ## Active decisions
@@ -25,3 +25,4 @@ clippy clean, NSIS installer built (unsigned, 4.96 MiB). No commits yet
 
 ## Recent entries
 - [2026-09-28 MVP-0 Windows implementation](2026-09-28/093000-mvp0-windows-implementation.md)
+- [2026-09-30 About + Export/Import Backup](2026-09-30/211200-about-export-import-backup.md)

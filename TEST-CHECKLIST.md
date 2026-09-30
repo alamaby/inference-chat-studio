@@ -21,3 +21,9 @@ Gate: all 12 rows checked + `cargo test --workspace`, `typecheck`, and
 Automated coverage (CI): `cargo test --workspace` (conversation-store 6,
 secret-store 5, provider-core 5, provider-openai 11, tauri IPC 3),
 `vitest` (reasoning 3, inspector 3).
+New coverage after 2026-09-30 feature work:
+Rust `inference-chat-studio-tauri`: +8 (app_info_semver, export_backup_excludes_secrets,
+export_backup_on_empty_db, import_backup_merges_with_new_ids, import_backup_rejects_bad_format,
+import_backup_rejects_unsupported_version, import_backup_skips_dangling_bookmark,
+import_backup_skips_unsupported_provider).
+Vitest: +14 in `src/lib/backup.test.ts` (validateBackupFile, parseBackupJsonText, buildBackupFilename).

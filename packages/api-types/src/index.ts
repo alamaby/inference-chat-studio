@@ -126,3 +126,96 @@ export interface BookmarkDto {
   anchor_text : string;
   created_at : string;
 }
+
+export interface AppInfo {
+  name : string;
+  version : string;
+  build_number : string;
+  git_sha : string;
+  build_time : string;
+  tauri_version : string;
+}
+
+// No credential_reference / api_key here: secrets never leave the backend.
+export interface BackupProvider {
+  id : string;
+  name : string;
+  base_url : string;
+  compatibility_type : string;
+  api_mode : string;
+  additional_headers_json? : string | null;
+  default_model_id? : string | null;
+  enabled : boolean;
+  created_at : string;
+  updated_at : string;
+}
+
+export interface BackupModel {
+  id : string;
+  provider_id : string;
+  remote_model_id : string;
+  display_name? : string | null;
+  capabilities_json? : string | null;
+  manually_added : boolean;
+  available : boolean;
+  first_seen_at : string;
+  last_seen_at : string;
+}
+
+export interface ConversationRowLite {
+  id : string;
+  title : string;
+  provider_id? : string | null;
+  default_model_id? : string | null;
+  system_prompt? : string | null;
+  settings_json? : string | null;
+  pinned : boolean;
+  archived : boolean;
+  created_at : string;
+  updated_at : string;
+}
+
+export interface MessageRowLite {
+  id : string;
+  conversation_id : string;
+  parent_message_id? : string | null;
+  role : string;
+  content_json : string;
+  raw_provider_data_json? : string | null;
+  provider_id? : string | null;
+  model_id? : string | null;
+  reasoning_config_json? : string | null;
+  usage_json? : string | null;
+  duration_ms? : number | null;
+  ttft_ms? : number | null;
+  finish_reason? : string | null;
+  status : string;
+  created_at : string;
+}
+
+export interface BackupConversation {
+  conversation : ConversationRowLite;
+  messages : MessageRowLite[];
+  bookmarks : BookmarkDto[];
+}
+
+export const BACKUP_FORMAT = "ics-backup";
+export const BACKUP_VERSION = 1;
+
+export interface BackupFile {
+  format : string;
+  version : number;
+  exported_at : string;
+  app_version : string;
+  providers : BackupProvider[];
+  models : BackupModel[];
+  conversations : BackupConversation[];
+}
+
+export interface ImportSummary {
+  providers : number;
+  models : number;
+  conversations : number;
+  messages : number;
+  bookmarks : number;
+}
