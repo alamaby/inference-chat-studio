@@ -1,0 +1,13 @@
+[package]
+name = "secret-store"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+keyring = "3"
+thiserror = "2"
+
+[features]
+test-utils = []
+
+[dev-dependencies]
