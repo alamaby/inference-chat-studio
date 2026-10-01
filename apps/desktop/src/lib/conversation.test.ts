@@ -3,6 +3,7 @@ import {
   decodeContent,
   formatMessageTime,
   parseConversationSettings,
+  sanitizeRenameTitle,
   serializeConversationSettings,
   toChatMsg
 } from "./conversation";
@@ -95,5 +96,23 @@ describe("parseConversationSettings", () => {
     );
     expect(partial.reasoningLevel).toBe("Automatic");
     expect(partial.temperature).toBe(0.7);
+  });
+});
+
+describe("sanitizeRenameTitle", () => {
+  it("trims surrounding whitespace", () => {
+    expect(sanitizeRenameTitle("  hi  ")).toBe("hi");
+  });
+
+  it("returns null for empty string", () => {
+    expect(sanitizeRenameTitle("")).toBeNull();
+  });
+
+  it("returns null for whitespace-only", () => {
+    expect(sanitizeRenameTitle("   ")).toBeNull();
+  });
+
+  it("passes through non-empty titles", () => {
+    expect(sanitizeRenameTitle("Sprint 12")).toBe("Sprint 12");
   });
 });

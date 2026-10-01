@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { useProviderStore } from "./stores/providerStore";
+import { matchShortcut } from "./lib/shortcuts";
 import { CommandPalette } from "./components/CommandPalette";
 import { ProviderForm } from "./components/ProviderForm";
 import { ModelSelector } from "./components/ModelSelector";
@@ -37,7 +38,24 @@ export function App() {
       if (e.key === "F12") {
         e.preventDefault();
         void openDevtools();
+        return;
       }
+      const target = e.target as HTMLElement | null;
+      const action = matchShortcut({
+        key : e.key,
+        ctrlKey : e.ctrlKey,
+        metaKey : e.metaKey,
+        targetTag : target?.tagName ?? "",
+        isContentEditable : target?.isContentEditable ?? false
+      });
+      if (action === "new-conversation") {
+        e.preventDefault();
+        void useProviderStore.getState().newConversation("New conversation").catch(() => undefined);
+      } else if (action === "bookmark-from-selection") {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("ics:bookmark-from-selection"));
+      }
+      // "toggle-palette" (Ctrl+K) is owned by CommandPalette; never handled here.
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);

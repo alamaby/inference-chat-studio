@@ -88,6 +88,15 @@ export function formatMessageTime(iso : string | null | undefined): string {
   return `${date} ${time}`;
 }
 
+/**
+ * Trim a rename input. Returns null when empty so the caller cancels
+ * instead of invoking the backend (which would reject with validation).
+ */
+export function sanitizeRenameTitle(input : string): string | null {
+  const t = input.trim();
+  return t ? t : null;
+}
+
 export type ReasoningLevelString =
   | "Automatic"
   | "None"

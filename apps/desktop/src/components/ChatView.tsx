@@ -2,10 +2,17 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
 import { formatIpcError } from "../lib/errors";
+import {
+  buildSingleConversationJson,
+  buildSingleConversationMarkdown,
+  buildSingleExportFilename,
+  downloadTextFile
+} from "../lib/singleExport";
 import type { ChatDoneEvent, ChatErrorEvent } from "../../../../packages/api-types/src/index";
 import { useProviderStore } from "../stores/providerStore";
 import { availableReasoningOptions } from "../lib/reasoning";
 import { MessageList } from "./MessageList";
+import { ConversationUsage } from "./ConversationUsage";
 import { Inspector, type InspectorProps } from "./Inspector";
 
 export function ChatView() {
@@ -24,7 +31,8 @@ export function ChatView() {
     error,
     setStreaming,
     setError,
-    setMessages
+    setMessages,
+    activeConversationId
   } = useProviderStore();
   const messages = useProviderStore((s) => s.messages);
   const [draft, setDraft] = useState("");
@@ -283,6 +291,43 @@ export function ChatView() {
     setStreaming(false);
   }
 
+  /**
+   * Export the active conversation as Markdown or JSON, entirely from store
+   * state (no IPC): sharing/debugging without a full backup round-trip.
+   */
+  async function exportSingle(ext : "md" | "json") {
+    const s = useProviderStore.getState();
+    const conv = s.conversations.find((c) => c.id === s.activeConversationId);
+    if (!conv) {
+      setError("Select a conversation first.");
+      return;
+    }
+    try {
+      const input = {
+        conversation : {
+          id : conv.id,
+          title : conv.title,
+          provider_id : conv.provider_id ?? null,
+          default_model_id : conv.default_model_id ?? null,
+          system_prompt : conv.system_prompt ?? null,
+          created_at : "",
+          updated_at : ""
+        },
+        messages : s.messages,
+        bookmarks : s.bookmarks,
+        exportedAt : new Date().toISOString()
+      };
+      const text = ext === "md" ? buildSingleConversationMarkdown(input) : buildSingleConversationJson(input);
+      downloadTextFile(
+        buildSingleExportFilename(conv.title, ext),
+        text,
+        ext === "md" ? "text/markdown" : "application/json"
+      );
+    } catch (e) {
+      setError(formatIpcError(e));
+    }
+  }
+
   function onKeyDown(e : React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -343,6 +388,24 @@ export function ChatView() {
         </select>
       </div>
       <div className="mt-2 flex gap-2">
+        <button
+          onClick={() => void exportSingle("md")}
+          disabled={!activeConversationId}
+          title={activeConversationId ? "Export active conversation as Markdown" : "Select a conversation first"}
+          className="rounded-lg border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:hover:bg-slate-800"
+        >
+          Export MD
+        </button>
+        <button
+          onClick={() => void exportSingle("json")}
+          disabled={!activeConversationId}
+          title={activeConversationId ? "Export active conversation as JSON" : "Select a conversation first"}
+          className="rounded-lg border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:hover:bg-slate-800"
+        >
+          Export JSON
+        </button>
+      </div>
+      <div className="mt-2 flex gap-2">
         <textarea
           ref={composerRef}
           value={draft}
@@ -357,6 +420,7 @@ export function ChatView() {
           : <button onClick={() => void send()} disabled={!canSend} className="rounded-lg bg-brand-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-brand-500 dark:hover:bg-brand-600">Send</button>}
       </div>
       {lastDiagnostics && <Inspector {...lastDiagnostics} />}
+      <ConversationUsage conversationId={activeConversationId} />
       {!stuckToBottom && messages.length > 0 && (
         <button
           onClick={scrollToBottom}

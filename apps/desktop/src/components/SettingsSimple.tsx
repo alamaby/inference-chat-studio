@@ -1,8 +1,17 @@
+import { useState } from "react";
 import { useProviderStore } from "../stores/providerStore";
 import { REASONING_LEVELS } from "../../../../packages/api-types/src/index";
 import { availableReasoningOptions } from "../lib/reasoning";
+import {
+  createTemplateItem,
+  deleteTemplate,
+  loadTemplates,
+  saveTemplates,
+  upsertTemplate,
+  type PromptTemplate
+} from "../lib/promptTemplates";
 import { Collapsible } from "./Collapsible";
-import { hintText, input, label, select, textarea } from "../lib/ui";
+import { btn, hintText, input, label, select, textarea } from "../lib/ui";
 
 export function SettingsSimple() {
   const {
@@ -22,6 +31,44 @@ export function SettingsSimple() {
   const caps = models.find((m) => m.remote_model_id === activeModelId)?.capabilities ?? null;
   const { options, supported } = availableReasoningOptions(caps);
   void REASONING_LEVELS;
+
+  const [templates, setTemplates] = useState<PromptTemplate[]>(() => {
+    try {
+      return loadTemplates();
+    } catch {
+      return [];
+    }
+  });
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [templateName, setTemplateName] = useState<string>("");
+
+  function saveCurrentAsTemplate() {
+    try {
+      const now = new Date().toISOString();
+      const id =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `t-${Date.now()}`;
+      const next = upsertTemplate(templates, createTemplateItem(id, templateName, systemPrompt, now));
+      setTemplates(next);
+      saveTemplates(next);
+      setTemplateName("");
+      setSelectedTemplateId(id);
+    } catch {
+      // createTemplateItem rejects an empty name; the button is disabled then,
+      // so this guard only fires for unexpected inputs.
+    }
+  }
+
+  function deleteSelectedTemplate() {
+    if (!selectedTemplateId) {
+      return;
+    }
+    const next = deleteTemplate(templates, selectedTemplateId);
+    setTemplates(next);
+    saveTemplates(next);
+    setSelectedTemplateId("");
+  }
 
   return (
     <Collapsible id="settings" title="Settings (simple)">
@@ -53,6 +100,59 @@ export function SettingsSimple() {
           />
         </label>
       )}
+      <div className="mb-2 rounded-lg border border-slate-200 p-2 dark:border-slate-700">
+        <p className={hintText}>Prompt templates (stored locally, not in backup).</p>
+        <div className="mt-1 flex gap-2">
+          <select
+            value={selectedTemplateId}
+            onChange={(e) => setSelectedTemplateId(e.target.value)}
+            className={`${select} flex-1`}
+            title="Prompt template"
+          >
+            <option value="">Select template...</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => {
+              const found = templates.find((t) => t.id === selectedTemplateId);
+              if (found) {
+                setSimple({ systemPrompt : found.content });
+              }
+            }}
+            disabled={!selectedTemplateId}
+            className={btn}
+            title="Apply template to system prompt"
+          >
+            Apply
+          </button>
+          <button
+            onClick={deleteSelectedTemplate}
+            disabled={!selectedTemplateId}
+            className={btn}
+            title="Delete template"
+          >
+            Delete
+          </button>
+        </div>
+        <div className="mt-1 flex gap-2">
+          <input
+            value={templateName}
+            onChange={(e) => setTemplateName(e.target.value)}
+            placeholder="Template name..."
+            className={`${input} flex-1`}
+          />
+          <button
+            onClick={saveCurrentAsTemplate}
+            disabled={!templateName.trim() || !systemPrompt.trim()}
+            className={btn}
+            title="Save current system prompt as template"
+          >
+            Save current
+          </button>
+        </div>
+      </div>
       <label className={`${label} mb-2 block`}>
         System prompt
         <textarea

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useProviderStore } from "../stores/providerStore";
+import { sanitizeRenameTitle } from "../lib/conversation";
 import { Collapsible } from "./Collapsible";
 import { btn, btnPrimary, hintText, input, select } from "../lib/ui";
 
@@ -22,6 +23,7 @@ export function ConversationList() {
   const [draftTitle, setDraftTitle] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   const q = conversationSearch.trim().toLowerCase();
   const visible = conversations.filter((c) => {
@@ -38,10 +40,12 @@ export function ConversationList() {
   }
 
   async function commitRename(id : string) {
-    if (renameValue.trim()) {
-      await renameConversation(id, renameValue.trim());
-    }
+    const clean = sanitizeRenameTitle(renameValue);
     setRenamingId(null);
+    if (!clean) {
+      return;
+    }
+    await renameConversation(id, clean);
   }
 
   return (
@@ -91,7 +95,21 @@ export function ConversationList() {
           >
             {renamingId === c.id ? (
               <span className="flex gap-2">
-                <input value={renameValue} onChange={(e) => setRenameValue(e.target.value)} className={`${input} flex-1`} />
+                <input
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      setRenamingId(null);
+                    } else if (e.key === "Enter") {
+                      e.preventDefault();
+                      void commitRename(c.id);
+                    }
+                  }}
+                  autoFocus
+                  className={`${input} flex-1`}
+                />
                 <button onClick={() => void commitRename(c.id)} className={btn}>Save</button>
               </span>
             ) : (
@@ -103,8 +121,15 @@ export function ConversationList() {
                 >
                   {c.title}
                 </button>
-                <button onClick={() => { setRenamingId(c.id); setRenameValue(c.title); }} className={btn}>Rename</button>
-                <button onClick={() => void deleteConversation(c.id)} className={btn}>Delete</button>
+                <button onClick={() => { setRenamingId(c.id); setRenameValue(c.title); setConfirmingId(null); }} className={btn}>Rename</button>
+                {confirmingId === c.id ? (
+                  <span className="flex gap-1">
+                    <button onClick={() => { setConfirmingId(null); void deleteConversation(c.id); }} className={btn} title="Click again to confirm delete">Confirm?</button>
+                    <button onClick={() => setConfirmingId(null)} className={btn}>Cancel</button>
+                  </span>
+                ) : (
+                  <button onClick={() => setConfirmingId(c.id)} className={btn}>Delete</button>
+                )}
               </span>
             )}
           </li>

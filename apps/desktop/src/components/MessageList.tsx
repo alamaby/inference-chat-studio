@@ -76,6 +76,31 @@ export function MessageList() {
     };
   }, [menu]);
 
+  // Ctrl+B (see App.tsx): bookmark the current text selection without the
+  // right-click menu. Mirrors `bookmarkHere` below, minus the menu — the
+  // selection itself provides the message context.
+  useEffect(() => {
+    function onBookmarkShortcut() {
+      const sel = window.getSelection();
+      const text = sel?.toString() ?? "";
+      if (!sel || sel.isCollapsed || !text.trim()) {
+        return;
+      }
+      const node = sel.anchorNode?.parentElement ?? null;
+      const article = node?.closest?.("[data-message-id]") as HTMLElement | null;
+      const messageId = article?.getAttribute("data-message-id") ?? null;
+      if (!messageId) {
+        return;
+      }
+      const anchor = normalizeAnchor(text).slice(0, 200);
+      void createBookmark(messageId, bookmarkLabel(text), anchor)
+        .then(() => sel.removeAllRanges())
+        .catch(() => undefined);
+    }
+    window.addEventListener("ics:bookmark-from-selection", onBookmarkShortcut);
+    return () => window.removeEventListener("ics:bookmark-from-selection", onBookmarkShortcut);
+  }, [createBookmark]);
+
   async function copy(text : string) {
     try {
       await navigator.clipboard.writeText(text);
