@@ -69,6 +69,7 @@ fn conversation_messages_ordered_by_created_at() {
         settings_json: None,
         pinned: false,
         archived: false,
+        folder_id: None,
         created_at: "2026-09-28T00:00:00Z".to_string(),
         updated_at: "2026-09-28T00:00:00Z".to_string(),
     })
@@ -103,14 +104,16 @@ fn conversation_messages_ordered_by_created_at() {
 fn migrate_is_idempotent_and_indexes_exist() {
     let db = Db::connect_in_memory().expect("connect");
     db.migrate().expect("migrate twice");
-    assert_eq!(db.schema_version().expect("version"), 2);
+    assert_eq!(db.schema_version().expect("version"), 3);
     let mut indexes = db.index_names().expect("indexes");
     indexes.sort();
     assert_eq!(
         indexes,
         vec![
             "idx_bookmarks_conv".to_string(),
+            "idx_conv_folder".to_string(),
             "idx_conv_updated".to_string(),
+            "idx_ctag_conv".to_string(),
             "idx_messages_conv_created".to_string(),
             "idx_models_provider".to_string(),
         ]
@@ -136,6 +139,7 @@ fn conversation_row(id: &str, title: &str, updated_at: &str) -> ConversationRow 
         settings_json: None,
         pinned: false,
         archived: false,
+        folder_id: None,
         created_at: "2026-09-28T00:00:00Z".to_string(),
         updated_at: updated_at.to_string(),
     }
@@ -247,6 +251,7 @@ fn deleting_provider_with_history_detaches_conversations_first() {
         settings_json: None,
         pinned: false,
         archived: false,
+        folder_id: None,
         created_at: "2026-09-28T00:00:00Z".to_string(),
         updated_at: "2026-09-28T00:00:00Z".to_string(),
     })

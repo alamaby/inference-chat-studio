@@ -12,9 +12,11 @@ import {
 import type {
   BookmarkDto,
   ConnectionStatus,
+  FolderDto,
   ModelInfo,
   ProviderDto,
-  ReasoningLevel
+  ReasoningLevel,
+  TagDto
 } from "../../../../packages/api-types/src/index";
 
 interface ConversationDto {
@@ -24,6 +26,7 @@ interface ConversationDto {
   default_model_id? : string | null;
   system_prompt? : string | null;
   settings_json? : string | null;
+  folder_id? : string | null;
 }
 
 interface ProviderState {
@@ -36,6 +39,7 @@ interface ProviderState {
   systemPrompt : string;
   temperature : number | null;
   maxOutput : number | null;
+  timeoutMs : number | null;
   statusByProvider : Record<string, ConnectionStatus>;
   testingByProvider : Record<string, boolean>;
   testErrorByProvider : Record<string, string | null>;
@@ -44,6 +48,10 @@ interface ProviderState {
   conversationSearch : string;
   conversationFilterProvider : string | null;
   conversationFilterModel : string | null;
+  conversationFolderFilter : string | null;
+  conversationTagFilter : string | null;
+  folders : FolderDto[];
+  tags : TagDto[];
   messages : ChatMsg[];
   bookmarks : BookmarkDto[];
   streaming : boolean;
@@ -57,7 +65,7 @@ interface ProviderState {
   rotateProviderKey : (id : string, apiKey : string) => Promise<void>;
   setActive : (providerId : string | null, modelId : string | null) => void;
   setReasoning : (level : ReasoningLevel, customJson : string) => void;
-  setSimple : (patch : Partial<Pick<ProviderState, "systemPrompt" | "temperature" | "maxOutput">>) => void;
+  setSimple : (patch : Partial<Pick<ProviderState, "systemPrompt" | "temperature" | "maxOutput" | "timeoutMs">>) => void;
   setError : (msg : string | null) => void;
   setMessages : (msgs : ChatMsg[]) => void;
   setStreaming : (v : boolean) => void;
@@ -72,6 +80,11 @@ interface ProviderState {
   deleteConversation : (id : string) => Promise<void>;
   setConversationSearch : (q : string) => void;
   setConversationFilters : (providerId : string | null, modelId : string | null) => void;
+  setConversationFolderFilter : (folderId : string | null) => void;
+  setConversationTagFilter : (tagId : string | null) => void;
+  loadFoldersTags : () => Promise<void>;
+  setConversationFolder : (id : string, folderId : string | null) => Promise<void>;
+  setConversationTags : (id : string, tagIds : string[]) => Promise<void>;
   clearProviderError : (id : string) => void;
 }
 
@@ -91,6 +104,7 @@ function conversationPatch(
     customReasoningJson : settings.reasoningCustomJson,
     temperature : settings.temperature,
     maxOutput : settings.maxOutput,
+    timeoutMs : settings.timeoutMs,
     ...resolveSelection(
       s.providers,
       s.modelsByProvider,
@@ -110,6 +124,7 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
   systemPrompt : "",
   temperature : null,
   maxOutput : null,
+  timeoutMs : null,
   statusByProvider : {},
   testingByProvider : {},
   testErrorByProvider : {},
@@ -118,6 +133,10 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
   conversationSearch : "",
   conversationFilterProvider : null,
   conversationFilterModel : null,
+  conversationFolderFilter : null,
+  conversationTagFilter : null,
+  folders : [],
+  tags : [],
   messages : [],
   bookmarks : [],
   streaming : false,
@@ -354,7 +373,8 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
         reasoningLevel : s.reasoningLevel,
         reasoningCustomJson : s.customReasoningJson,
         temperature : s.temperature,
-        maxOutput : s.maxOutput
+        maxOutput : s.maxOutput,
+        timeoutMs : s.timeoutMs
       }),
       defaultModelId : s.activeModelId
     });
@@ -391,6 +411,24 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
     conversationFilterProvider : providerId,
     conversationFilterModel : modelId
   }),
+  setConversationFolderFilter : (folderId : string | null) => set({ conversationFolderFilter : folderId }),
+  setConversationTagFilter : (tagId : string | null) => set({ conversationTagFilter : tagId }),
+  loadFoldersTags : async () => {
+    const [folders, tags] = await Promise.all([
+      invoke<FolderDto[]>("list_folders_cmd"),
+      invoke<TagDto[]>("list_tags_cmd")
+    ]);
+    set({ folders, tags });
+  },
+  setConversationFolder : async (id : string, folderId : string | null) => {
+    await invoke("set_conversation_folder_cmd", { conversationId : id, folderId });
+    set((s) => ({
+      conversations : s.conversations.map((c) => (c.id === id ? { ...c, folder_id : folderId } : c))
+    }));
+  },
+  setConversationTags : async (id : string, tagIds : string[]) => {
+    await invoke("set_conversation_tags_cmd", { conversationId : id, tagIds });
+  },
   clearProviderError : (id : string) => set((s) => {
     const testErrorByProvider = { ...s.testErrorByProvider };
     delete testErrorByProvider[id];

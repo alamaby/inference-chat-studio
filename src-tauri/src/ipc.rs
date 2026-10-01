@@ -12,7 +12,8 @@ use std::time::Instant;
 
 use chrono::Utc;
 use conversation_store::{
-    BookmarkRow, ConversationRow, Db, MessageRow, ModelRow, ProviderRow, StoreError,
+    BookmarkRow, ConversationRow, Db, FolderRow, MessageRow, ModelRow, ProviderRow, StoreError,
+    TagRow,
 };
 use provider_core::{
     ChatMessage, ConnectionStatus, ModelCapabilities, ModelInfo, NormalizedChatRequest,
@@ -20,7 +21,7 @@ use provider_core::{
 };
 use secret_store::{SecretStore, credential_reference_for_provider};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 // ---------------------------------------------------------------------------
 // State
@@ -162,6 +163,8 @@ pub struct CreateProviderInput {
     pub additional_headers_json: Option<String>,
     #[serde(default = "default_timeout")]
     pub timeout_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compatibility_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -336,6 +339,32 @@ async fn emit_error(
     );
 }
 
+/// Like [`emit_error`] but targets a specific window label.
+async fn emit_error_to(
+    app: &AppHandle,
+    label: &str,
+    stream_id: &str,
+    conversation_id: &str,
+    err: IpcError,
+    diagnostics: Option<(String, serde_json::Value)>,
+) {
+    let (request_url, request_body) = diagnostics
+        .map(|(u, b)| (Some(u), Some(b)))
+        .unwrap_or((None, None));
+    let _ = app.emit_to(
+        label,
+        "chat-error",
+        ChatErrorEvent {
+            stream_id: stream_id.to_string(),
+            conversation_id: conversation_id.to_string(),
+            code: err.code,
+            message: err.message,
+            request_url,
+            request_body,
+        },
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Provider commands
 // ---------------------------------------------------------------------------
@@ -358,6 +387,14 @@ pub async fn create_provider(
         });
     }
     let base_url = validate_base_url(&input.base_url)?;
+    let compat = input.compatibility_type.unwrap_or_else(|| "openai".to_string());
+    if compat != "openai" && compat != "anthropic" {
+        return Err(IpcError {
+            code: "validation".to_string(),
+            message: format!("unsupported compatibility_type '{compat}'"),
+        });
+    }
+    let api_mode = if compat == "anthropic" { "anthropic" } else { "chat_completions" };
     let now = now_rfc3339();
     let id = uuid::Uuid::new_v4().to_string();
     let credential_reference = credential_reference_for_provider(&id);
@@ -368,8 +405,8 @@ pub async fn create_provider(
     let row = ProviderRow {
         id: id.clone(),
         name: input.name.trim().to_string(),
-        compatibility_type: "openai".to_string(),
-        api_mode: "chat_completions".to_string(),
+        compatibility_type: compat.clone(),
+        api_mode: api_mode.to_string(),
         base_url,
         credential_reference: Some(credential_reference),
         additional_headers_json: input.additional_headers_json,
@@ -505,10 +542,28 @@ impl From<ProviderRow> for BackupProvider {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackupFolder {
+    pub id: String,
+    pub name: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackupTag {
+    pub id: String,
+    pub name: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackupConversation {
     pub conversation: ConversationRow,
     pub messages: Vec<MessageRow>,
     pub bookmarks: Vec<BookmarkRow>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tag_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -520,6 +575,10 @@ pub struct BackupFile {
     pub providers: Vec<BackupProvider>,
     pub models: Vec<ModelRow>,
     pub conversations: Vec<BackupConversation>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub folders: Vec<BackupFolder>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<BackupTag>,
 }
 
 /// Export a provider configuration. `api_key` is ALWAYS null.
@@ -564,16 +623,41 @@ fn backup_from_db(db: &Db) -> Result<BackupFile, IpcError> {
     for provider in &providers {
         models.extend(db.list_models_by_provider(&provider.id)?);
     }
+    let folders: Vec<BackupFolder> = db
+        .list_folders()?
+        .into_iter()
+        .map(|f| BackupFolder {
+            id: f.id,
+            name: f.name,
+            created_at: f.created_at,
+        })
+        .collect();
+    let tags: Vec<BackupTag> = db
+        .list_tags()?
+        .into_iter()
+        .map(|t| BackupTag {
+            id: t.id,
+            name: t.name,
+            created_at: t.created_at,
+        })
+        .collect();
     let conversations = db
         .list_conversations()?
         .into_iter()
         .map(|conversation| {
             let messages = db.list_messages_by_conversation(&conversation.id)?;
             let bookmarks = db.list_bookmarks_by_conversation(&conversation.id)?;
+            let tag_ids = db
+                .list_conversation_tags(&conversation.id)?
+                .into_iter()
+                .map(|t| t.id)
+                .collect();
             Ok::<BackupConversation, IpcError>(BackupConversation {
                 conversation,
                 messages,
                 bookmarks,
+                folder_id: None,
+                tag_ids,
             })
         })
         .collect::<Result<Vec<BackupConversation>, IpcError>>()?;
@@ -585,6 +669,8 @@ fn backup_from_db(db: &Db) -> Result<BackupFile, IpcError> {
         providers,
         models,
         conversations,
+        folders,
+        tags,
     })
 }
 
@@ -598,7 +684,7 @@ pub struct ImportSummary {
 }
 
 pub const BACKUP_FORMAT: &str = "ics-backup";
-pub const BACKUP_VERSION: u32 = 1;
+pub const BACKUP_VERSION: u32 = 2;
 const MAX_BACKUP_PROVIDERS: usize = 10_000;
 const MAX_BACKUP_CONVERSATIONS: usize = 50_000;
 
@@ -611,7 +697,7 @@ fn validate_backup(backup: &BackupFile) -> Result<(), IpcError> {
             message: format!("unsupported backup format: {}", backup.format),
         });
     }
-    if backup.version != BACKUP_VERSION {
+    if backup.version != 1 && backup.version != 2 {
         return Err(IpcError {
             code: "validation".to_string(),
             message: format!("unsupported backup version: {}", backup.version),
@@ -630,7 +716,7 @@ fn validate_backup(backup: &BackupFile) -> Result<(), IpcError> {
                 message: "provider name must not be empty".to_string(),
             });
         }
-        if provider.api_mode != "chat_completions" {
+        if provider.api_mode != "chat_completions" && provider.api_mode != "anthropic" {
             // Unknown api_mode: this provider is skipped during import
             // (counted as 0) instead of failing the whole file, so one
             // unsupported provider never wipes out the usable data.
@@ -647,6 +733,22 @@ fn validate_backup(backup: &BackupFile) -> Result<(), IpcError> {
                     message: "bookmark label and anchor_text must not be empty".to_string(),
                 });
             }
+        }
+    }
+    for folder in &backup.folders {
+        if folder.name.trim().is_empty() {
+            return Err(IpcError {
+                code: "validation".to_string(),
+                message: "folder name must not be empty".to_string(),
+            });
+        }
+    }
+    for tag in &backup.tags {
+        if tag.name.trim().is_empty() {
+            return Err(IpcError {
+                code: "validation".to_string(),
+                message: "tag name must not be empty".to_string(),
+            });
         }
     }
     Ok(())
@@ -670,7 +772,7 @@ fn import_backup_file(db: &Db, backup: &BackupFile) -> Result<ImportSummary, Ipc
     let mut provider_map: HashMap<String, String> = HashMap::new();
     let mut providers = 0usize;
     for provider in &backup.providers {
-        if provider.api_mode != "chat_completions" {
+        if provider.api_mode != "chat_completions" && provider.api_mode != "anthropic" {
             continue;
         }
         // Timestamps are preserved verbatim (history fidelity); ids are new.
@@ -710,6 +812,19 @@ fn import_backup_file(db: &Db, backup: &BackupFile) -> Result<ImportSummary, Ipc
         })?;
         models += 1;
     }
+    // Import folders and tags (id remap for conversation references).
+    let mut folder_map: HashMap<String, String> = HashMap::new();
+    for folder in &backup.folders {
+        let new_id = uuid::Uuid::new_v4().to_string();
+        db.create_folder(&folder.name, &folder.created_at)?;
+        folder_map.insert(folder.id.clone(), new_id);
+    }
+    let mut tag_map: HashMap<String, String> = HashMap::new();
+    for tag in &backup.tags {
+        let new_id = uuid::Uuid::new_v4().to_string();
+        db.create_tag(&tag.name, &tag.created_at)?;
+        tag_map.insert(tag.id.clone(), new_id);
+    }
     let mut conversations = 0usize;
     let mut messages = 0usize;
     let mut bookmarks = 0usize;
@@ -720,6 +835,15 @@ fn import_backup_file(db: &Db, backup: &BackupFile) -> Result<ImportSummary, Ipc
             .as_deref()
             .and_then(|old| provider_map.get(old).cloned());
         let new_conversation_id = uuid::Uuid::new_v4().to_string();
+        let folder_id = entry
+            .folder_id
+            .as_deref()
+            .and_then(|old| folder_map.get(old).cloned());
+        let tag_ids: Vec<String> = entry
+            .tag_ids
+            .iter()
+            .filter_map(|old| tag_map.get(old).cloned())
+            .collect();
         db.insert_conversation(&ConversationRow {
             id: new_conversation_id.clone(),
             title: entry.conversation.title.clone(),
@@ -729,9 +853,11 @@ fn import_backup_file(db: &Db, backup: &BackupFile) -> Result<ImportSummary, Ipc
             settings_json: entry.conversation.settings_json.clone(),
             pinned: entry.conversation.pinned,
             archived: entry.conversation.archived,
+            folder_id,
             created_at: entry.conversation.created_at.clone(),
             updated_at: entry.conversation.updated_at.clone(),
         })?;
+        db.set_conversation_tags(&new_conversation_id, &tag_ids)?;
         conversations += 1;
         let mut message_map: HashMap<String, String> = HashMap::new();
         for message in &entry.messages {
@@ -799,18 +925,22 @@ pub async fn test_connection_cmd(
         code: "model_not_found".to_string(),
         message: format!("provider not found: {id}"),
     })?;
-    if row.api_mode != "chat_completions" {
+    if row.api_mode != "chat_completions" && row.api_mode != "anthropic" {
         return Err(IpcError {
             code: "validation".to_string(),
             message: format!(
-                "unsupported api_mode '{}': MVP-0 only supports 'chat_completions'",
+                "unsupported api_mode '{}': only 'chat_completions' and 'anthropic' are supported",
                 row.api_mode
             ),
         });
     }
     let api_key = load_api_key(&state, row.credential_reference.as_deref())?;
     eprintln!("[ipc] test_connection provider={} url={}", id, row.base_url);
-    let result = provider_openai::test_connection(&row.base_url, &api_key, 30_000).await;
+    let result = if row.api_mode == "anthropic" {
+        provider_anthropic::test_anthropic_connection(&row.base_url, &api_key, 30_000).await
+    } else {
+        provider_openai::test_connection(&row.base_url, &api_key, 30_000).await
+    };
     match &result {
         Ok(status) => eprintln!("[ipc] test_connection {id} -> {status:?}"),
         Err(e) => eprintln!("[ipc] test_connection {id} failed: {e}"),
@@ -834,10 +964,10 @@ pub async fn refresh_models(
             code: "model_not_found".to_string(),
             message: format!("provider not found: {provider_id}"),
         })?;
-    if row.api_mode != "chat_completions" {
+    if row.api_mode != "chat_completions" && row.api_mode != "anthropic" {
         return Err(IpcError {
             code: "validation".to_string(),
-            message: "MVP-0 only supports 'chat_completions'".to_string(),
+            message: "only 'chat_completions' and 'anthropic' are supported".to_string(),
         });
     }
     let api_key = load_api_key(&state, row.credential_reference.as_deref())?;
@@ -845,12 +975,21 @@ pub async fn refresh_models(
         "[ipc] refresh_models provider={} url={}",
         provider_id, row.base_url
     );
-    let models = provider_openai::list_models(&row.base_url, &api_key, 30_000)
-        .await
-        .map_err(|e| {
-            eprintln!("[ipc] refresh_models {provider_id} failed: {e}");
-            IpcError::from(e)
-        })?;
+    let models = if row.api_mode == "anthropic" {
+        provider_anthropic::list_anthropic_models(&row.base_url, &api_key, 30_000)
+            .await
+            .map_err(|e| {
+                eprintln!("[ipc] refresh_models {provider_id} failed: {e}");
+                IpcError::from(e)
+            })?
+    } else {
+        provider_openai::list_models(&row.base_url, &api_key, 30_000)
+            .await
+            .map_err(|e| {
+                eprintln!("[ipc] refresh_models {provider_id} failed: {e}");
+                IpcError::from(e)
+            })?
+    };
     let now = now_rfc3339();
     for model in &models {
         let existing: Option<ModelRow> = state
@@ -950,6 +1089,7 @@ pub async fn create_conversation(
         settings_json: None,
         pinned: false,
         archived: false,
+        folder_id: None,
         created_at: now.clone(),
         updated_at: now,
     };
@@ -1043,6 +1183,90 @@ pub async fn delete_bookmark(
 }
 
 // ---------------------------------------------------------------------------
+// Folder commands
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn create_folder(
+    state: State<'_, AppState>,
+    name: String,
+) -> Result<FolderRow, IpcError> {
+    if name.trim().is_empty() {
+        return Err(IpcError {
+            code: "validation".to_string(),
+            message: "folder name must not be empty".to_string(),
+        });
+    }
+    Ok(state.db.create_folder(&name, &now_rfc3339())?)
+}
+
+#[tauri::command]
+pub async fn list_folders_cmd(state: State<'_, AppState>) -> Result<Vec<FolderRow>, IpcError> {
+    Ok(state.db.list_folders()?)
+}
+
+#[tauri::command]
+pub async fn rename_folder(
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+) -> Result<(), IpcError> {
+    if name.trim().is_empty() {
+        return Err(IpcError {
+            code: "validation".to_string(),
+            message: "folder name must not be empty".to_string(),
+        });
+    }
+    Ok(state.db.rename_folder(&id, &name)?)
+}
+
+#[tauri::command]
+pub async fn delete_folder(state: State<'_, AppState>, id: String) -> Result<(), IpcError> {
+    Ok(state.db.delete_folder(&id)?)
+}
+
+// ---------------------------------------------------------------------------
+// Tag commands
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn create_tag(
+    state: State<'_, AppState>,
+    name: String,
+) -> Result<TagRow, IpcError> {
+    if name.trim().is_empty() {
+        return Err(IpcError {
+            code: "validation".to_string(),
+            message: "tag name must not be empty".to_string(),
+        });
+    }
+    Ok(state.db.create_tag(&name, &now_rfc3339())?)
+}
+
+#[tauri::command]
+pub async fn list_tags_cmd(state: State<'_, AppState>) -> Result<Vec<TagRow>, IpcError> {
+    Ok(state.db.list_tags()?)
+}
+
+#[tauri::command]
+pub async fn set_conversation_folder_cmd(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    folder_id: Option<String>,
+) -> Result<(), IpcError> {
+    Ok(state.db.set_conversation_folder(&conversation_id, folder_id.as_deref())?)
+}
+
+#[tauri::command]
+pub async fn set_conversation_tags_cmd(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    tag_ids: Vec<String>,
+) -> Result<(), IpcError> {
+    Ok(state.db.set_conversation_tags(&conversation_id, &tag_ids)?)
+}
+
+// ---------------------------------------------------------------------------
 // Chat commands
 // ---------------------------------------------------------------------------
 
@@ -1058,6 +1282,7 @@ pub struct StreamChatInput {
     pub reasoning_level: ReasoningLevel,
     pub reasoning_custom_json: Option<serde_json::Value>,
     pub timeout_ms: Option<u64>,
+    pub origin_window: Option<String>,
 }
 
 #[tauri::command]
@@ -1073,12 +1298,13 @@ pub async fn stream_chat_cmd(
             code: "model_not_found".to_string(),
             message: format!("provider not found: {}", input.provider_id),
         })?;
-    if row.api_mode != "chat_completions" {
+    if row.api_mode != "chat_completions" && row.api_mode != "anthropic" {
         return Err(IpcError {
             code: "validation".to_string(),
-            message: "MVP-0 only supports 'chat_completions'".to_string(),
+            message: "only 'chat_completions' and 'anthropic' are supported".to_string(),
         });
     }
+    let is_anthropic = row.api_mode == "anthropic";
     let _ = row_to_config(&row, input.timeout_ms.unwrap_or(30_000));
 
     // Resolve model capabilities from the local cache (or manual defaults).
@@ -1096,12 +1322,45 @@ pub async fn stream_chat_cmd(
         custom_json: input.reasoning_custom_json.clone(),
     };
     reasoning.validate().map_err(IpcError::from)?;
-    let effort = provider_openai::map_reasoning(
-        &reasoning.level,
-        &caps,
-        reasoning.custom_json.as_ref(),
-    )
-    .map_err(IpcError::from)?;
+    let effort = if is_anthropic {
+        // Anthropic reasoning: only None/Automatic/Custom are supported.
+        // Concrete levels (Minimal..Maximum) are rejected until wire values
+        // are confirmed against the real provider (plan Notes, blocker 1).
+        match reasoning.level {
+            ReasoningLevel::Automatic | ReasoningLevel::None => None,
+            ReasoningLevel::Custom => {
+                if reasoning.custom_json.is_none() {
+                    return Err(IpcError {
+                        code: "validation".to_string(),
+                        message: "custom reasoning requires custom_json".to_string(),
+                    });
+                }
+                Some(
+                    reasoning
+                        .custom_json
+                        .as_ref()
+                        .unwrap()
+                        .to_string(),
+                )
+            }
+            _ => {
+                return Err(IpcError {
+                    code: "reasoning_not_supported".to_string(),
+                    message: format!(
+                        "anthropic reasoning level '{}' is not yet supported",
+                        reasoning.level.as_str()
+                    ),
+                });
+            }
+        }
+    } else {
+        provider_openai::map_reasoning(
+            &reasoning.level,
+            &caps,
+            reasoning.custom_json.as_ref(),
+        )
+        .map_err(IpcError::from)?
+    };
 
     let api_key = load_api_key(&state, row.credential_reference.as_deref())?;
     let stream_id = uuid::Uuid::new_v4().to_string();
@@ -1125,16 +1384,27 @@ pub async fn stream_chat_cmd(
         serde_json::to_string(&request.reasoning).unwrap_or_else(|_| "{}".to_string());
     // Diagnostics body for the Inspector (also attached to chat-error).
     // Contains no secrets: auth travels in headers, never in this JSON.
-    let diag_url = format!(
-        "{}/chat/completions",
-        provider_openai::normalize_base_url(&row.base_url)
-    );
-    let diag_body = provider_openai::build_chat_body(
-        &request,
-        effort,
-        caps.supports_temperature,
-    )
-    .unwrap_or(serde_json::Value::Null);
+    let (diag_url, diag_body) = if is_anthropic {
+        let url = format!(
+            "{}/messages",
+            provider_anthropic::normalize_anthropic_base_url(&row.base_url)
+        );
+        let body = provider_anthropic::build_anthropic_body(&request)
+            .unwrap_or(serde_json::Value::Null);
+        (url, body)
+    } else {
+        let url = format!(
+            "{}/chat/completions",
+            provider_openai::normalize_base_url(&row.base_url)
+        );
+        let body = provider_openai::build_chat_body(
+            &request,
+            effort.clone(),
+            caps.supports_temperature,
+        )
+        .unwrap_or(serde_json::Value::Null);
+        (url, body)
+    };
 
     // Persist the user message first (linear history, MVP-0).
     let now = now_rfc3339();
@@ -1165,13 +1435,22 @@ pub async fn stream_chat_cmd(
     let model = input.model.clone();
     let base_url = row.base_url.clone();
     let supports_temperature = caps.supports_temperature;
+    let origin_window = input.origin_window.clone();
 
     tokio::spawn(async move {
         let started = Instant::now();
         let mut cancel_rx = cancel_rx;
-        let result = tokio::select! {
-            res = provider_openai::stream_chat(&base_url, &api_key, &request, supports_temperature) => res.map_err(IpcError::from),
-            _ = cancel_rx.changed() => Err(IpcError { code: "cancelled".to_string(), message: "stream cancelled by user".to_string() }),
+        let result = if is_anthropic {
+            let timeout = request.timeout_ms;
+            tokio::select! {
+                res = provider_anthropic::stream_anthropic_chat(&base_url, &api_key, &request, timeout) => res.map_err(IpcError::from),
+                _ = cancel_rx.changed() => Err(IpcError { code : "cancelled".to_string(), message : "stream cancelled by user".to_string() }),
+            }
+        } else {
+            tokio::select! {
+                res = provider_openai::stream_chat(&base_url, &api_key, &request, supports_temperature) => res.map_err(IpcError::from),
+                _ = cancel_rx.changed() => Err(IpcError { code : "cancelled".to_string(), message : "stream cancelled by user".to_string() }),
+            }
         };
         match result {
             Ok(stream) => {
@@ -1203,23 +1482,25 @@ pub async fn stream_chat_cmd(
                     created_at: now.clone(),
                 });
                 let _ = db.touch_conversation(&conversation_id, &now);
-                let _ = app_clone.emit(
-                    "chat-done",
-                    ChatDoneEvent {
-                        stream_id: stream_id_clone.clone(),
-                        conversation_id: conversation_id.clone(),
-                        message_id,
-                        text: stream.text,
-                        finish_reason: stream.finish_reason,
-                        usage: stream.usage,
-                        duration_ms,
-                        ttft_ms: stream.ttft_ms,
-                        model,
-                        request_url: stream.request_url,
-                        status_code: stream.status_code,
-                        created_at: now.clone(),
-                    },
-                );
+                let event = ChatDoneEvent {
+                    stream_id: stream_id_clone.clone(),
+                    conversation_id: conversation_id.clone(),
+                    message_id,
+                    text: stream.text,
+                    finish_reason: stream.finish_reason,
+                    usage: stream.usage,
+                    duration_ms,
+                    ttft_ms: stream.ttft_ms,
+                    model,
+                    request_url: stream.request_url,
+                    status_code: stream.status_code,
+                    created_at: now.clone(),
+                };
+                if let Some(ref label) = origin_window {
+                    let _ = app_clone.emit_to(label, "chat-done", event);
+                } else {
+                    let _ = app_clone.emit("chat-done", event);
+                }
             }
             Err(err) => {
                 if err.code == "cancelled" {
@@ -1242,14 +1523,27 @@ pub async fn stream_chat_cmd(
                         created_at: now,
                     });
                 }
-                emit_error(
-                    &app_clone,
-                    &stream_id_clone,
-                    &conversation_id,
-                    err,
-                    Some((diag_url.clone(), diag_body.clone())),
-                )
-                .await;
+                let (diag_url, diag_body) = (diag_url.clone(), diag_body.clone());
+                if let Some(ref label) = origin_window {
+                    emit_error_to(
+                        &app_clone,
+                        label,
+                        &stream_id_clone,
+                        &conversation_id,
+                        err,
+                        Some((diag_url, diag_body)),
+                    )
+                    .await;
+                } else {
+                    emit_error(
+                        &app_clone,
+                        &stream_id_clone,
+                        &conversation_id,
+                        err,
+                        Some((diag_url, diag_body)),
+                    )
+                    .await;
+                }
             }
         }
     });
@@ -1277,6 +1571,43 @@ pub async fn cancel_stream(
 #[tauri::command]
 pub async fn open_devtools(window: tauri::Webview) -> Result<(), IpcError> {
     window.open_devtools();
+    Ok(())
+}
+
+/// Open (or focus) the read-only Inspector window.
+///
+/// If the window already exists, it is shown and focused. Otherwise a new
+/// window is created with the `#/inspector` hash route.
+#[tauri::command]
+pub async fn open_inspector_window(app: AppHandle) -> Result<(), IpcError> {
+    use tauri::WebviewWindowBuilder;
+    use tauri::WebviewUrl;
+    if let Some(win) = app.get_webview_window("inspector") {
+        let _ = win.show();
+        let _ = win.set_focus();
+    } else {
+        WebviewWindowBuilder::new(
+            &app,
+            "inspector",
+            WebviewUrl::App("/index.html#/inspector".into()),
+        )
+        .title("Inspector")
+        .inner_size(600.0, 800.0)
+        .build()
+        .map_err(|e| IpcError {
+            code: "validation".to_string(),
+            message: format!("failed to create inspector window: {e}"),
+        })?;
+    }
+    Ok(())
+}
+
+/// Hide the Inspector window (state is preserved for next open).
+#[tauri::command]
+pub async fn close_inspector_window(app: AppHandle) -> Result<(), IpcError> {
+    if let Some(win) = app.get_webview_window("inspector") {
+        let _ = win.hide();
+    }
     Ok(())
 }
 
@@ -1423,6 +1754,7 @@ mod tests {
             settings_json: None,
             pinned: false,
             archived: false,
+            folder_id: None,
             created_at: "2026-01-01T00:00:00.000Z".to_string(),
             updated_at: "2026-01-01T00:00:01.000Z".to_string(),
         }
@@ -1526,7 +1858,11 @@ mod tests {
                     message_row("old-msg-assistant", "old-c", "yo"),
                 ],
                 bookmarks: vec![bookmark_row("old-b", "old-c", "old-msg-user")],
+                folder_id: None,
+                tag_ids: vec![],
             }],
+            folders: vec![],
+            tags: vec![],
         }
     }
 
@@ -1593,7 +1929,7 @@ mod tests {
     fn import_backup_rejects_unsupported_version() {
         let db = Db::connect_in_memory().expect("db");
         let mut backup = sample_backup();
-        backup.version = 2;
+        backup.version = 3;
         let err = import_backup_file(&db, &backup).expect_err("must reject");
         assert_eq!(err.code, "validation");
         assert!(err.message.contains("unsupported backup version"));

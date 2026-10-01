@@ -53,6 +53,7 @@ export interface CreateProviderInput {
   api_key : string;
   additional_headers_json? : string | null;
   timeout_ms? : number;
+  compatibility_type? : "openai" | "anthropic" | null;
 }
 
 export interface ModelCapabilities {
@@ -86,6 +87,7 @@ export interface StreamChatInput {
   reasoning_level : ReasoningLevel;
   reasoning_custom_json? : unknown;
   timeout_ms? : number;
+  origin_window? : string | null;
 }
 
 export interface ChatChunkEvent {
@@ -124,6 +126,18 @@ export interface BookmarkDto {
   message_id : string;
   label : string;
   anchor_text : string;
+  created_at : string;
+}
+
+export interface FolderDto {
+  id : string;
+  name : string;
+  created_at : string;
+}
+
+export interface TagDto {
+  id : string;
+  name : string;
   created_at : string;
 }
 
@@ -171,6 +185,7 @@ export interface ConversationRowLite {
   settings_json? : string | null;
   pinned : boolean;
   archived : boolean;
+  folder_id? : string | null;
   created_at : string;
   updated_at : string;
 }
@@ -193,14 +208,28 @@ export interface MessageRowLite {
   created_at : string;
 }
 
+export interface BackupFolder {
+  id : string;
+  name : string;
+  created_at : string;
+}
+
+export interface BackupTag {
+  id : string;
+  name : string;
+  created_at : string;
+}
+
 export interface BackupConversation {
   conversation : ConversationRowLite;
   messages : MessageRowLite[];
   bookmarks : BookmarkDto[];
+  folder_id? : string | null;
+  tag_ids? : string[];
 }
 
 export const BACKUP_FORMAT = "ics-backup";
-export const BACKUP_VERSION = 1;
+export const BACKUP_VERSION = 2;
 
 export interface BackupFile {
   format : string;
@@ -210,6 +239,8 @@ export interface BackupFile {
   providers : BackupProvider[];
   models : BackupModel[];
   conversations : BackupConversation[];
+  folders? : BackupFolder[];
+  tags? : BackupTag[];
 }
 
 export interface ImportSummary {

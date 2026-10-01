@@ -81,7 +81,8 @@ describe("parseConversationSettings", () => {
       reasoningLevel : "High",
       reasoningCustomJson : "{\"a\":1}",
       temperature : 0.5,
-      maxOutput : 1024
+      maxOutput : 1024,
+      timeoutMs : 30000
     } as const;
     expect(parseConversationSettings(serializeConversationSettings({ ...settings }))).toEqual({
       ...settings
@@ -96,6 +97,40 @@ describe("parseConversationSettings", () => {
     );
     expect(partial.reasoningLevel).toBe("Automatic");
     expect(partial.temperature).toBe(0.7);
+  });
+
+  it("rejects out-of-range temperature, maxOutput, and timeout", () => {
+    const parsed = parseConversationSettings(
+      JSON.stringify({ temperature : 999, max_output_tokens : -5, timeout_ms : 50 })
+    );
+    expect(parsed.temperature).toBeNull();
+    expect(parsed.maxOutput).toBeNull();
+    expect(parsed.timeoutMs).toBeNull();
+  });
+
+  it("accepts boundary values for temperature, maxOutput, and timeout", () => {
+    const parsed = parseConversationSettings(
+      JSON.stringify({ temperature : -2, max_output_tokens : 1, timeout_ms : 1000 })
+    );
+    expect(parsed.temperature).toBe(-2);
+    expect(parsed.maxOutput).toBe(1);
+    expect(parsed.timeoutMs).toBe(1000);
+  });
+
+  it("rejects non-integer timeout", () => {
+    const parsed = parseConversationSettings(JSON.stringify({ timeout_ms : 1500.5 }));
+    expect(parsed.timeoutMs).toBeNull();
+  });
+
+  it("returns defaults for null input", () => {
+    const parsed = parseConversationSettings(null);
+    expect(parsed).toEqual({
+      reasoningLevel : "Automatic",
+      reasoningCustomJson : "{\"reasoning_effort\": \"high\"}",
+      temperature : null,
+      maxOutput : null,
+      timeoutMs : null
+    });
   });
 });
 

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useRef, useState } from "react";
 import { formatIpcError } from "../lib/errors";
 import {
@@ -26,6 +27,7 @@ export function ChatView() {
     systemPrompt,
     temperature,
     maxOutput,
+    timeoutMs,
     modelsByProvider,
     streaming,
     error,
@@ -260,7 +262,8 @@ export function ChatView() {
           max_output_tokens : maxOutput,
           reasoning_level : reasoningLevel,
           reasoning_custom_json : customJson,
-          timeout_ms : 60000
+          timeout_ms : timeoutMs ?? 30000,
+          origin_window : getCurrentWindow().label
         }
       });
       setActiveStream(streamId);

@@ -10,6 +10,7 @@ use tauri::Manager;
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let db_path = resolve_db_path(app);
             let db =
@@ -34,6 +35,14 @@ fn main() {
             ipc::rename_conversation,
             ipc::delete_conversation,
             ipc::update_conversation_settings,
+            ipc::create_folder,
+            ipc::list_folders_cmd,
+            ipc::rename_folder,
+            ipc::delete_folder,
+            ipc::create_tag,
+            ipc::list_tags_cmd,
+            ipc::set_conversation_folder_cmd,
+            ipc::set_conversation_tags_cmd,
             ipc::list_messages_cmd,
             ipc::create_bookmark,
             ipc::list_bookmarks_cmd,
@@ -41,6 +50,8 @@ fn main() {
             ipc::stream_chat_cmd,
             ipc::cancel_stream,
             ipc::open_devtools,
+            ipc::open_inspector_window,
+            ipc::close_inspector_window,
             ipc::get_app_info,
         ])
         .run(tauri::generate_context!())

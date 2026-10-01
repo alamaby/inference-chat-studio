@@ -125,13 +125,15 @@ export interface ConversationSettings {
   reasoningCustomJson : string;
   temperature : number | null;
   maxOutput : number | null;
+  timeoutMs : number | null;
 }
 
 export const DEFAULT_SETTINGS: ConversationSettings = {
   reasoningLevel : "Automatic",
   reasoningCustomJson : "{\"reasoning_effort\": \"high\"}",
   temperature : null,
-  maxOutput : null
+  maxOutput : null,
+  timeoutMs : null
 };
 
 /** Serialize UI settings into `conversations.settings_json`. */
@@ -140,7 +142,8 @@ export function serializeConversationSettings(s : ConversationSettings): string 
     reasoning_level : s.reasoningLevel,
     reasoning_custom_json : s.reasoningCustomJson,
     temperature : s.temperature,
-    max_output_tokens : s.maxOutput
+    max_output_tokens : s.maxOutput,
+    timeout_ms : s.timeoutMs
   });
 }
 
@@ -166,6 +169,7 @@ export function parseConversationSettings(raw : string | null | undefined): Conv
   const custom = o["reasoning_custom_json"];
   const temp = o["temperature"];
   const maxOut = o["max_output_tokens"];
+  const timeout = o["timeout_ms"];
   return {
     reasoningLevel :
       typeof level === "string" && (REASONING_LEVELS as string[]).includes(level)
@@ -173,7 +177,17 @@ export function parseConversationSettings(raw : string | null | undefined): Conv
         : DEFAULT_SETTINGS.reasoningLevel,
     reasoningCustomJson :
       typeof custom === "string" ? custom : DEFAULT_SETTINGS.reasoningCustomJson,
-    temperature : typeof temp === "number" && Number.isFinite(temp) ? temp : null,
-    maxOutput : typeof maxOut === "number" && Number.isFinite(maxOut) ? maxOut : null
+    temperature :
+      typeof temp === "number" && Number.isFinite(temp) && temp >= -2 && temp <= 2
+        ? temp
+        : null,
+    maxOutput :
+      typeof maxOut === "number" && Number.isFinite(maxOut) && maxOut >= 1 && maxOut <= 128000
+        ? maxOut
+        : null,
+    timeoutMs :
+      typeof timeout === "number" && Number.isFinite(timeout) && Number.isInteger(timeout) && timeout >= 1000 && timeout <= 120000
+        ? timeout
+        : null
   };
 }

@@ -47,7 +47,8 @@ const LEVEL_LABELS: Record<ReasoningLevel, string> = {
  * - empty allowlist + reasoning supported → all levels enabled.
  */
 export function availableReasoningOptions(
-  caps: ModelCapabilities | null | undefined
+  caps: ModelCapabilities | null | undefined,
+  compat? : string
 ): { options : ReasoningOption[]; supported : boolean } {
   const levels: ReasoningLevel[] = [
     "Automatic",
@@ -61,6 +62,21 @@ export function availableReasoningOptions(
     "Custom"
   ];
   const alwaysOn: ReasoningLevel[] = ["Automatic", "None", "Custom"];
+  // Anthropic: only None/Automatic/Custom are supported until wire values
+  // are confirmed (plan Notes, blocker 1). Concrete levels are disabled.
+  if (compat === "anthropic") {
+    return {
+      supported : false,
+      options : levels.map((level) => ({
+        level,
+        label : LEVEL_LABELS[level],
+        enabled : alwaysOn.includes(level),
+        hint : alwaysOn.includes(level)
+          ? undefined
+          : "Not supported by Anthropic yet"
+      }))
+    };
+  }
   if (!caps || !caps.supports_reasoning) {
     return {
       supported : false,

@@ -5,7 +5,8 @@ use std::sync::Mutex;
 
 const INIT_SQL: &str = include_str!("../migrations/0001_init.sql");
 const BOOKMARKS_SQL: &str = include_str!("../migrations/0002_bookmarks.sql");
-const SCHEMA_VERSION: i64 = 2;
+const FOLDERS_TAGS_SQL: &str = include_str!("../migrations/0003_folders_tags.sql");
+const SCHEMA_VERSION: i64 = 3;
 
 #[derive(Debug)]
 pub enum StoreError {
@@ -78,6 +79,7 @@ pub struct ConversationRow {
     pub settings_json: Option<String>,
     pub pinned: bool,
     pub archived: bool,
+    pub folder_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -108,6 +110,20 @@ pub struct BookmarkRow {
     pub message_id: String,
     pub label: String,
     pub anchor_text: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FolderRow {
+    pub id: String,
+    pub name: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TagRow {
+    pub id: String,
+    pub name: String,
     pub created_at: String,
 }
 
@@ -150,6 +166,7 @@ impl Db {
             match version {
                 0 => conn.execute_batch(INIT_SQL)?,
                 1 => conn.execute_batch(BOOKMARKS_SQL)?,
+                2 => conn.execute_batch(FOLDERS_TAGS_SQL)?,
                 _ => break,
             }
             version += 1;
@@ -159,11 +176,29 @@ impl Db {
     }
 
     fn validate_provider(row: &ProviderRow) -> Result<()> {
-        if row.api_mode != "chat_completions" {
-            return Err(StoreError::Validation(format!(
-                "unsupported api_mode '{}': MVP-0 only supports 'chat_completions'",
-                row.api_mode
-            )));
+        let compat = row.compatibility_type.as_str();
+        match compat {
+            "openai" => {
+                if row.api_mode != "chat_completions" {
+                    return Err(StoreError::Validation(format!(
+                        "unsupported api_mode '{}': openai requires 'chat_completions'",
+                        row.api_mode
+                    )));
+                }
+            }
+            "anthropic" => {
+                if row.api_mode != "anthropic" {
+                    return Err(StoreError::Validation(format!(
+                        "unsupported api_mode '{}': anthropic requires 'anthropic'",
+                        row.api_mode
+                    )));
+                }
+            }
+            other => {
+                return Err(StoreError::Validation(format!(
+                    "unsupported compatibility_type '{other}'"
+                )));
+            }
         }
         if row.name.trim().is_empty() {
             return Err(StoreError::Validation("provider name must not be empty".to_string()));
@@ -259,7 +294,7 @@ impl Db {
     pub fn insert_conversation(&self, row: &ConversationRow) -> Result<()> {
         let conn = self.conn.lock().expect("db mutex poisoned");
         conn.execute(
-            "INSERT INTO conversations(id, title, provider_id, default_model_id, system_prompt, settings_json, pinned, archived, created_at, updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+            "INSERT INTO conversations(id, title, provider_id, default_model_id, system_prompt, settings_json, pinned, archived, folder_id, created_at, updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
             params![
                 row.id,
                 row.title,
@@ -269,6 +304,7 @@ impl Db {
                 row.settings_json,
                 i64::from(row.pinned),
                 i64::from(row.archived),
+                row.folder_id,
                 row.created_at,
                 row.updated_at,
             ],
@@ -288,7 +324,7 @@ impl Db {
     pub fn list_conversations(&self) -> Result<Vec<ConversationRow>> {
         let conn = self.conn.lock().expect("db mutex poisoned");
         let mut stmt = conn.prepare(
-            "SELECT id, title, provider_id, default_model_id, system_prompt, settings_json, pinned, archived, created_at, updated_at FROM conversations ORDER BY updated_at DESC",
+            "SELECT id, title, provider_id, default_model_id, system_prompt, settings_json, pinned, archived, folder_id, created_at, updated_at FROM conversations ORDER BY updated_at DESC",
         )?;
         let rows = stmt
             .query_map([], map_conversation_row)?
@@ -430,6 +466,175 @@ impl Db {
         Ok(())
     }
 
+    // -----------------------------------------------------------------------
+    // Folders
+    // -----------------------------------------------------------------------
+
+    pub fn create_folder(&self, name: &str, created_at: &str) -> Result<FolderRow> {
+        if name.trim().is_empty() {
+            return Err(StoreError::Validation(
+                "folder name must not be empty".to_string(),
+            ));
+        }
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        let id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO folders(id, name, created_at) VALUES(?1,?2,?3)",
+            params![id, name.trim(), created_at],
+        )?;
+        Ok(FolderRow {
+            id,
+            name: name.trim().to_string(),
+            created_at: created_at.to_string(),
+        })
+    }
+
+    pub fn list_folders(&self) -> Result<Vec<FolderRow>> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT id, name, created_at FROM folders ORDER BY created_at ASC",
+        )?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(FolderRow {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    created_at: row.get(2)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn rename_folder(&self, id: &str, name: &str) -> Result<()> {
+        if name.trim().is_empty() {
+            return Err(StoreError::Validation(
+                "folder name must not be empty".to_string(),
+            ));
+        }
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        conn.execute(
+            "UPDATE folders SET name = ?1 WHERE id = ?2",
+            params![name.trim(), id],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_folder(&self, id: &str) -> Result<()> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        // Set folder_id to NULL on conversations before deleting the folder.
+        conn.execute(
+            "UPDATE conversations SET folder_id = NULL WHERE folder_id = ?1",
+            params![id],
+        )?;
+        conn.execute("DELETE FROM folders WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn set_conversation_folder(
+        &self,
+        conversation_id: &str,
+        folder_id: Option<&str>,
+    ) -> Result<()> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        conn.execute(
+            "UPDATE conversations SET folder_id = ?1 WHERE id = ?2",
+            params![folder_id, conversation_id],
+        )?;
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Tags
+    // -----------------------------------------------------------------------
+
+    pub fn create_tag(&self, name: &str, created_at: &str) -> Result<TagRow> {
+        if name.trim().is_empty() {
+            return Err(StoreError::Validation(
+                "tag name must not be empty".to_string(),
+            ));
+        }
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        // Idempotent: return existing tag if name already exists.
+        let existing: Option<String> = conn
+            .query_row(
+                "SELECT id FROM tags WHERE name = ?1",
+                params![name.trim()],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if let Some(id) = existing {
+            return Ok(TagRow {
+                id,
+                name: name.trim().to_string(),
+                created_at: created_at.to_string(),
+            });
+        }
+        let id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO tags(id, name, created_at) VALUES(?1,?2,?3)",
+            params![id, name.trim(), created_at],
+        )?;
+        Ok(TagRow {
+            id,
+            name: name.trim().to_string(),
+            created_at: created_at.to_string(),
+        })
+    }
+
+    pub fn list_tags(&self) -> Result<Vec<TagRow>> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT id, name, created_at FROM tags ORDER BY name ASC",
+        )?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(TagRow {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    created_at: row.get(2)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn set_conversation_tags(
+        &self,
+        conversation_id: &str,
+        tag_ids: &[String],
+    ) -> Result<()> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        conn.execute(
+            "DELETE FROM conversation_tags WHERE conversation_id = ?1",
+            params![conversation_id],
+        )?;
+        for tag_id in tag_ids {
+            conn.execute(
+                "INSERT INTO conversation_tags(conversation_id, tag_id) VALUES(?1,?2)",
+                params![conversation_id, tag_id],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn list_conversation_tags(&self, conversation_id: &str) -> Result<Vec<TagRow>> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT t.id, t.name, t.created_at FROM tags t INNER JOIN conversation_tags ct ON t.id = ct.tag_id WHERE ct.conversation_id = ?1 ORDER BY t.name ASC",
+        )?;
+        let rows = stmt
+            .query_map(params![conversation_id], |row| {
+                Ok(TagRow {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    created_at: row.get(2)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     pub fn schema_version(&self) -> Result<i64> {
         let conn = self.conn.lock().expect("db mutex poisoned");
         let version: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
@@ -492,8 +697,9 @@ fn map_conversation_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Conversatio
         settings_json: row.get(5)?,
         pinned: bool_from_i64(row.get::<_, i64>(6)?),
         archived: bool_from_i64(row.get::<_, i64>(7)?),
-        created_at: row.get(8)?,
-        updated_at: row.get(9)?,
+        folder_id: row.get(8)?,
+        created_at: row.get(9)?,
+        updated_at: row.get(10)?,
     })
 }
 

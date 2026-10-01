@@ -11,6 +11,7 @@ import { BookmarkRail } from "./components/BookmarkRail";
 import { ConversationList } from "./components/ConversationList";
 import { AboutDialog } from "./components/AboutDialog";
 import { DataBackup } from "./components/DataBackup";
+import { Inspector } from "./components/Inspector";
 import { btn, errorText, hintText } from "./lib/ui";
 
 async function openDevtools(): Promise<void> {
@@ -61,6 +62,43 @@ export function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  const isInspector = window.location.hash === "#/inspector";
+
+  if (isInspector) {
+    return (
+      <div className="flex h-screen flex-col bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+        <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-5 py-3 dark:border-slate-800 dark:bg-slate-900">
+          <h1 className="text-lg font-bold leading-tight">Inspector</h1>
+          <button
+            onClick={() => void invoke("close_inspector_window").catch(() => undefined)}
+            className={`${btn} ml-auto`}
+          >
+            Close
+          </button>
+        </header>
+        <div className="flex-1 overflow-y-auto p-4">
+          <Inspector
+            url=""
+            method=""
+            requestBody={null}
+            compatibility=""
+            modelName=""
+            statusCode={null}
+            responseHeaders={null}
+            usage={null}
+            durationMs={null}
+            ttftMs={null}
+            finishReason={null}
+            requestId={null}
+            rawBody={null}
+            eventCount={null}
+            cancelled={false}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen flex-col bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-5 py-3 dark:border-slate-800 dark:bg-slate-900">
@@ -74,6 +112,13 @@ export function App() {
           className={btn}
         >
           About
+        </button>
+        <button
+          onClick={() => void invoke("open_inspector_window").catch(() => undefined)}
+          title="Open Inspector window"
+          className={btn}
+        >
+          Inspector
         </button>
         <button
           onClick={() => void openDevtools()}

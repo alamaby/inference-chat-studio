@@ -12,6 +12,7 @@ import {
   hintText,
   input,
   label,
+  select,
   statusDot,
   statusPill
 } from "../lib/ui";
@@ -31,6 +32,7 @@ export function ProviderForm() {
   const [name, setName] = useState("");
   const [baseUrl, setBaseUrl] = useState("http://127.0.0.1:8000/v1");
   const [apiKey, setApiKey] = useState("");
+  const [compat, setCompat] = useState<"openai" | "anthropic">("openai");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -58,7 +60,7 @@ export function ProviderForm() {
     setBusy(true);
     try {
       await invoke("create_provider", {
-        input : { name : name.trim(), base_url : baseUrl.trim(), api_key : apiKey, timeout_ms : 30000 }
+        input : { name : name.trim(), base_url : baseUrl.trim(), api_key : apiKey, timeout_ms : 30000, compatibility_type : compat }
       });
       setName("");
       setApiKey("");
@@ -116,9 +118,16 @@ export function ProviderForm() {
           Provider name
           <input value={name} onChange={(e) => setName(e.target.value)} className={input} />
         </label>
-        <label className={label} title="Anthropic menyusul setelah MVP-0">
-          Compatibility (locked in MVP-0)
-          <input value="OpenAI Compatible" disabled className={input} />
+        <label className={label}>
+          Compatibility
+          <select
+            value={compat}
+            onChange={(e) => setCompat(e.target.value as "openai" | "anthropic")}
+            className={select}
+          >
+            <option value="openai">OpenAI Compatible</option>
+            <option value="anthropic">Anthropic</option>
+          </select>
         </label>
         <label className={label}>
           Base URL
