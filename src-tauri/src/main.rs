@@ -10,7 +10,6 @@ use tauri::Manager;
 
 fn main() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let db_path = resolve_db_path(app);
             let db =

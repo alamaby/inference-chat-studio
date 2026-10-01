@@ -33,12 +33,6 @@
       "csp" : null
     }
   },
-  "plugins" : {
-    "updater" : {
-      "active" : false,
-      "endpoints" : ["https://github.com/alamaby/inference-chat-studio/releases/latest/download/latest.json"]
-    }
-  },
   "bundle" : {
     "active" : true,
     "publisher" : "Alam Aby Bashit",
