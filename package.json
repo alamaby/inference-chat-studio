@@ -1,6 +1,9 @@
 {
-  "name" : "inference-chat-studio",
-  "private" : true,
-  "version" : "0.3.0",
-  "packageManager" : "pnpm@10.34.5"
+  "name": "inference-chat-studio",
+  "private": true,
+  "version": "0.3.0",
+  "packageManager": "pnpm@10.34.5",
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.0"
+  }
 }
