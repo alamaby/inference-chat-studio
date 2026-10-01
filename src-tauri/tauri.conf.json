@@ -18,8 +18,7 @@
         "width" : 1280,
         "height" : 800,
         "minWidth" : 960,
-        "minHeight" : 600,
-        "devtools" : true
+        "minHeight" : 600
       },
       {
         "label" : "inspector",
